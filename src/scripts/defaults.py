@@ -79,7 +79,8 @@ table_columns = {
 
 
 
-battery_codes = [
+esr_codes = sorted([
+    "ALINTA_WGP_ESR1",
     "COLLIE_BESS2",
     "COLLIE_ESR1",
     "COLLIE_ESR4",
@@ -88,6 +89,17 @@ battery_codes = [
     "KWINANA_ESR2",
     "SBSOLAR1_CUNDERDIN_PV1",
     "TESLA_PICTON_G1",
-    "ALINTA_WGP_ESR1",
     "PRDSO_WALPOLE_HG1",  # fuel type: hydro
-]
+])
+
+
+# this information is obtained from the internet
+battery_capacity_MWh = {
+    "ALINTA_WGP_ESR1": 200,
+    "COLLIE_BESS2": 2400,
+    "COLLIE_ESR1": 800,
+    "COLLIE_ESR4": 2000,
+    "COLLIE_ESR5": 4000,
+    "KWINANA_ESR1": 200,
+    "KWINANA_ESR2": 900,
+}

@@ -1,39 +1,10 @@
 import pandas as pd
 
 
-class NEMTableName:
-    generators_loads = 'Generators and Scheduled Loads'
-    dispatch_loads = "DISPATCHLOAD"
-    fcas_4s_elements = 'ELEMENTS_FCAS_4_SECOND'
-    fcas_4s_data = "FCAS_4_SECOND"
-    dispatch_unit_scada = "DISPATCH_UNIT_SCADA"
-    dispatch_price = "DISPATCHPRICE"
-
-
 class WEMColumnName:
     quantity = "quantity"
     facility_code = "code"
     dispatch_interval = "dispatchInterval"
-
-
-class NEMColumnName:
-    primary_fuel_source = 'Fuel Source - Primary'
-    duid = "DUID"
-    timestamp = "TIMESTAMP"
-    initial_mw = "INITIALMW"
-    target_mw = "TOTALCLEARED"
-    element_name = "EMSNAME"
-    element_num = "ELEMENTNUMBER"
-    variable_num = "VARIABLENUMBER"
-    variable = "variable"
-    value = "VALUE"
-    station_name = "Station Name"
-    settlement_date = "SETTLEMENTDATE"
-    scada_value = "SCADAVALUE"
-    dispatch_type = "Dispatch Type"
-    region = "Region"
-    region_id = "REGIONID"
-    rrp = "RRP"
 
 
 class CustomColumnName:

@@ -1,10 +1,11 @@
 # Make sure you've installed with analysis extras
 # uv add "openelectricity[analysis]"
+from operator import index
 import plotly.graph_objects as go
 from scripts import wem
 from scripts.constants import *
 from scripts.util import *
-from scripts.defaults import battery_codes
+from scripts.defaults import esr_codes
 from utils.dirs import data_dir
 
 start_time = "2023/10/1 00:00:00"
@@ -15,16 +16,20 @@ battery_scada_data = wem.dynamic_data_compiler(start_time=start_time,
                                                end_time=end_time,
                                                table_name="facilityScada",
                                                filter_cols=["code"],
-                                               filter_values=(battery_codes,),
+                                               filter_values=(esr_codes,),
                                                # rebuild=True,
                                                )
-battery_scada_data[WEMColumnName.dispatch_interval] = pd.to_datetime(
-    battery_scada_data[WEMColumnName.dispatch_interval], utc=True, errors='coerce')
-battery_scada_data[CustomColumnName.time_of_day] = (
-    battery_scada_data[WEMColumnName.dispatch_interval].dt.strftime('%H:%M'))
-battery_scada_data[CustomColumnName.date_of_year] = (
-    battery_scada_data[WEMColumnName.dispatch_interval].dt.date)
-battery_scada_data.to_csv(data_dir / "wem_battery_scada.csv")
+
+# battery_scada_data[WEMColumnName.dispatch_interval] = pd.to_datetime(
+#     battery_scada_data[WEMColumnName.dispatch_interval], utc=True, errors='coerce'
+#     )
+# battery_scada_data[CustomColumnName.time_of_day] = (
+#     battery_scada_data[WEMColumnName.dispatch_interval].dt.strftime('%H:%M')
+#     )
+# battery_scada_data[CustomColumnName.date_of_year] = (
+#     battery_scada_data[WEMColumnName.dispatch_interval].dt.date
+#     )
+battery_scada_data.to_csv(data_dir / "wem_battery_scada.csv", index=False)
 
 
 """
