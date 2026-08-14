@@ -59,15 +59,6 @@ def get_battery_df():
 
 # get_battery_df()
 
-    hits = set()
-
-    with open(filepath, "rb") as f:
-        for prefix, event, value in ijson.parse(f):
-            if "price" in prefix.lower():
-                hits.add(prefix)
-                
-    for p in sorted(hits):
-        pprint(p)
 
 def get_df():
     df = (
@@ -78,8 +69,25 @@ def get_df():
     
     return df
 
-df = get_df()
+def plot():
+    df = get_df()
 
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(df)
-fig.savefig("charge_level.png", dpi=200)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(df)
+    fig.savefig("charge_level.png", dpi=200)
+
+
+
+
+import requests
+import json
+
+url = "https://data.wa.aemo.com.au/public/market-data/wemde/caseInputData/current/ReferenceDispatchCase_202608110800.json"
+
+resp = requests.get(url)
+
+d = json.loads(resp.text)
+
+json_str = json.dumps(d, indent=4)
+with open("caseinput_json.json", "w") as f:
+    f.write(json_str)

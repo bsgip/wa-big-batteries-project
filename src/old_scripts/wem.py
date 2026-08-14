@@ -1,5 +1,5 @@
 from datetime import datetime
-from scripts.custom_errors import UserInputError, NoDataToReturn, DataMismatchError
+from wem_data.custom_errors import UserInputError, NoDataToReturn, DataMismatchError
 from scripts.util import *
 
 

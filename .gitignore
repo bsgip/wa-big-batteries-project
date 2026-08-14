@@ -170,4 +170,4 @@ cython_debug/
 .idea
 
 # Data
-data/
+src/quick_downloads/

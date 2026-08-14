@@ -10,7 +10,7 @@ import pandas as pd
 from calendar import monthrange
 from datetime import timedelta
 
-from scripts.constants import *
+from wem_data.constants import *
 from scripts import defaults
 
 logger = logging.getLogger(__name__)

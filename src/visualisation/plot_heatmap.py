@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scripts.defaults import esr_codes
-from utils.dirs import data_dir
+from wem_data.paths import data_dir
 
 
 

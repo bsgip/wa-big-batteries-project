@@ -3,10 +3,10 @@
 from operator import index
 import plotly.graph_objects as go
 from scripts import wem
-from scripts.constants import *
+from wem_data.constants import *
 from scripts.util import *
 from scripts.defaults import esr_codes
-from utils.dirs import data_dir
+from wem_data.paths import data_dir
 
 start_time = "2023/10/1 00:00:00"
 end_time = "2026/8/1 23:59:59"
@@ -42,28 +42,4 @@ for code in battery_codes:
                                             CustomColumnName.date_of_year],
                                      columns=[WEMColumnName.facility_code])
     unit_scada_data.reset_index(inplace=True)
-    fig = go.Figure(data=go.Heatmap(
-        z=unit_scada_data[code],
-        y=unit_scada_data[CustomColumnName.time_of_day],
-        x=unit_scada_data[CustomColumnName.date_of_year],
-        colorscale='rdbu', zmid=0,
-        colorbar={"title": "Quantity (MW)"}
-    ))
-    fig.update_layout(
-        title=code,
-        yaxis_title=CustomColumnName.time_of_day,
-        xaxis_title=CustomColumnName.date_of_year,
-        # xaxis=axis_date_range_slider,
-        # font=dict(size=24),
-    )
-    fig.update_yaxes(nticks=6, autorange='reversed')
-    fig.update_xaxes(nticks=6)
-    fig.update_traces(hovertemplate="%{y} %{x}:<br>%{z} MW")
-
-    plot_name = (f'{code}_'
-                 f'{start_time.split(" ")[0].replace("/", "")}_'
-                 f'{end_time.split(" ")[0].replace("/", "")}')
-    write_plots(fig=fig, plot_name=plot_name, wem=True)
-    fig.show()
-    print()
 """

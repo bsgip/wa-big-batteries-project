@@ -28,7 +28,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wa-big-batteries-project"
 version = "0.0.1"
-description = "An example BSGIP app"
+description = "WA Big Batteries Project - AR-PST"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.5",
