@@ -31,6 +31,7 @@ version = "0.0.1"
 description = "WA Big Batteries Project - AR-PST"
 requires-python = ">=3.11"
 dependencies = [
+    "beautifulsoup4>=4.12",
     "duckdb>=1.5.5",
     "ijson>=3.5.1",
     "jupyter>=1.1.1",
@@ -38,7 +39,9 @@ dependencies = [
     "numpy>=2.4.6",
     "pandas>=3.0.5",
     "plotly>=6.9.0",
+    "requests>=2.31",
     "seaborn>=0.13.2",
+    "zipfile-deflate64>=0.2.0",
 ]
 
 [project.optional-dependencies]
