@@ -6,6 +6,7 @@ kept.
 
 Usage:
     python -m wem_data.download caseInputData "dispatchSolution/dispatchData"
+    python -m wem_data.download caseInputData --from-date 2025-01-01 --to-date 2025-01-31
     python -m wem_data.download caseInputData --retry-failed
     python -m wem_data.download --dataset caseInputData --url "<file-url>"
 
@@ -13,11 +14,18 @@ Failures (bad zips, network errors) are logged and skipped rather than
 stopping the run, and the failing URL is recorded in
 download_state_dir(dataset)/failed_downloads.txt for later retry via
 --retry-failed or --url.
+
+--from-date/--to-date filter on the YYYYMMDD date embedded in each listed
+file's name (e.g. "ReferenceDispatchCase_20250115.zip") before anything is
+downloaded. Files whose name doesn't carry a recognisable date are always
+kept, since there's no date to filter them on.
 """
 
 import io
 import logging
+import re
 import zipfile
+from datetime import date
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -59,6 +67,37 @@ def list_directory(url: str) -> tuple[list[tuple[str, str]], list[tuple[str, str
         name = text or href.rstrip("/").split("/")[-1]
         (subdirs if href.endswith("/") else files).append((name, full))
     return subdirs, files
+
+
+_DATE_RE = re.compile(r"_(\d{8})\d*(?:_\d+)?\.\w+$")
+
+
+def _extract_date(name: str) -> date | None:
+    """Pull the leading YYYYMMDD date out of a listed file's name, e.g.
+    "ReferenceDispatchCase_20250115.zip" (previous/, date only) or
+    "ReferenceDispatchCase_202501150800.json" (current/, date+time) ->
+    date(2025, 1, 15). Returns None for names that don't carry a
+    recognisable date."""
+    m = _DATE_RE.search(name)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)[:4]), int(m.group(1)[4:6]), int(m.group(1)[6:8]))
+    except ValueError:
+        return None
+
+
+def _in_date_range(name: str, start: date | None, end: date | None) -> bool:
+    if start is None and end is None:
+        return True
+    file_date = _extract_date(name)
+    if file_date is None:
+        return True
+    if start and file_date < start:
+        return False
+    if end and file_date > end:
+        return False
+    return True
 
 
 def _failed_file(state_dir: Path) -> Path:
@@ -161,11 +200,19 @@ def retry_failed_downloads(dataset: str) -> None:
         download_file(url, dataset, force=True)
 
 
-def download_dataset(dataset: str, folders: tuple[str, ...] = DATASET_FOLDERS, force: bool = False) -> None:
+def download_dataset(
+    dataset: str,
+    folders: tuple[str, ...] = DATASET_FOLDERS,
+    force: bool = False,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> None:
     """Download every file under wemde/<dataset>/{folders}/, flattened into
     raw_dataset_dir(dataset) - current/ and previous/ files land in the same
     directory since only the extracted .json content matters. `dataset` can
-    be nested, e.g. "dispatchSolution/dispatchData"."""
+    be nested, e.g. "dispatchSolution/dispatchData". If start_date/end_date
+    are given, only files whose name carries a YYYYMMDD date within that
+    (inclusive) range are downloaded."""
     dest_dir = raw_dataset_dir(dataset)
     state_dir = download_state_dir(dataset)
 
@@ -173,6 +220,8 @@ def download_dataset(dataset: str, folders: tuple[str, ...] = DATASET_FOLDERS, f
         url = f"{ROOT_URL}{dataset}/{folder}/"
         logger.info(f"listing {url}")
         _, files = list_directory(url)
+        if start_date or end_date:
+            files = [(name, file_url) for name, file_url in files if _in_date_range(name, start_date, end_date)]
 
         logger.info(f"{dataset}/{folder}: {len(files)} file(s)")
         for name, file_url in files:
@@ -197,6 +246,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--url", help="manually (re)download a single file URL; requires --dataset")
     parser.add_argument("--dataset", help="dataset the --url file belongs to")
+    parser.add_argument("--from-date", help="only download files dated on/after this date (YYYY-MM-DD)")
+    parser.add_argument("--to-date", help="only download files dated on/before this date (YYYY-MM-DD)")
     args = parser.parse_args()
 
     if args.url:
@@ -211,5 +262,7 @@ if __name__ == "__main__":
     else:
         if not args.datasets:
             parser.error("at least one dataset is required")
+        start_date = date.fromisoformat(args.from_date) if args.from_date else None
+        end_date = date.fromisoformat(args.to_date) if args.to_date else None
         for dataset in args.datasets:
-            download_dataset(dataset, force=args.force)
+            download_dataset(dataset, force=args.force, start_date=start_date, end_date=end_date)
