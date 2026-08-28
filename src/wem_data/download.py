@@ -173,6 +173,37 @@ def _download_and_extract_zip(url: str, dest_dir: Path, state_dir: Path, force: 
     return True
 
 
+def record_corrupted_file(dataset: str, filename: str) -> None:
+    """Record a local file that failed to *parse* (truncated/corrupted -
+    not necessarily a failure download.py itself caught at download time)
+    as a failed download for `dataset`, reusing the same
+    failed_downloads.txt that network-download failures go into, so
+    --retry-failed re-fetches it too. Assumes the file came from the
+    current/ folder (individual per-interval uploads - the failure-prone
+    path for interrupted downloads, unlike previous/'s infrequently-touched
+    zips); a file that actually came from previous/ won't be fixable this
+    way and will just fail the retry again harmlessly."""
+    url = f"{ROOT_URL}{dataset}/current/{filename}"
+    _record_failure(download_state_dir(dataset), url)
+
+
+def log_and_record_parse_failures(paths: list[Path], errors: list[str | None], dataset: str) -> None:
+    """After a parallel parse of every file in `dataset`, log a one-line
+    summary of any failures and record each one via record_corrupted_file
+    so a later `--retry-failed` run re-downloads and fixes them - one
+    unified recovery path instead of a second, disconnected failure log."""
+    failed = [(path, error) for path, error in zip(paths, errors, strict=True) if error is not None]
+
+    if not failed:
+        logger.info(f"{dataset}: all {len(paths)} files parsed cleanly")
+        return
+
+    logger.warning(f"{dataset}: {len(failed)} of {len(paths)} files failed to parse, recorded for --retry-failed")
+    for path, error in failed:
+        logger.debug(f"{path.name}: {error}")
+        record_corrupted_file(dataset, path.name)
+
+
 def download_file(url: str, dataset: str, force: bool = True) -> bool:
     """Manually (re)download a single file URL belonging to `dataset`, e.g.
     to retry one entry from failed_downloads.txt. Returns True on success."""
