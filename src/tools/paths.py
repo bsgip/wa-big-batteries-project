@@ -10,6 +10,14 @@ case_input_dir = raw_data_dir / "caseInputData"
 dispatch_solution_data_dir = raw_data_dir / "dispatchSolution" / "dispatchData"
 predispatch_data_dir = raw_data_dir / "dispatchSolution" / "predispatchData"
 
+# Repo-local output dirs, separate from the (huge, external) raw data above -
+# processed extracts and plots are small enough to live in the repo's own
+# data/ folder, which already holds hand-curated example outputs.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+repo_processed_data_dir = PROJECT_ROOT / "data" / "processed_data"
+repo_plots_dir = PROJECT_ROOT / "data" / "plots"
+repo_docs_dir = PROJECT_ROOT / "docs"
+
 
 def raw_dataset_dir(dataset: str) -> Path:
     """Where download.py and the parsers keep files for one dataset, e.g.
