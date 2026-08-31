@@ -172,3 +172,6 @@ cython_debug/
 # Data
 src/quick_downloads/
 data/
+
+# Misc
+src/aemo_ingest

@@ -8,12 +8,21 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from tools.constants import DISPATCH_SOLUTION_DATASET, battery_codes
-from tools.paths import case_input_dir, dispatch_solution_data_dir, predispatch_data_dir, raw_dataset_dir
 from tools.utils import search_keyword
 
-case_input_path = case_input_dir / "ReferenceDispatchCase_202608120800.json"
-dispatch_data_path = dispatch_solution_data_dir / "ReferenceDispatchSolution_202608140800.json"
-predispatch_data_path = predispatch_data_dir / "ReferencePre-DispatchSolution_202608171100.json"
+
+pd.set_option("display.max_columns", None)
+
+
+# Temp dirs
+root_dir = Path.cwd()
+data_dir = root_dir / "data"
+
+
+case_input_path = data_dir / "ReferenceDispatchCase_202608120800.json"
+dispatch_data_path = data_dir / "ReferenceDispatchSolution_202608140800.json"
+predispatch_data_path = data_dir / "ReferencePre-DispatchSolution_202608171100.json"
+
 
 
 def explore_dispatch():
@@ -44,32 +53,125 @@ def explore_dispatch():
 # explore_dispatch()
 
 
-def explore_case_input() -> pd.DataFrame:
+def _get_bid_stack_rows():
+    with open(case_input_path, "rb") as f:
+        rows = []
+        case_data = ijson.items(f, "data.caseData.item", use_float=True)
+
+        for item in case_data:
+            dispatch_interval = item["dispatchInterval"]
+
+            for market_data in item["markets"]["energy"]["facilities"]:
+                if market_data["facilityCode"] in battery_codes:
+                    for tranche in market_data["tranches"]:
+                        rows.append({
+                            "dispatch_interval": dispatch_interval,
+                            "code": market_data["facilityCode"],
+                            "quantity": tranche["quantity"],
+                            "submitted_price": tranche["submittedPrice"],
+                            "tranche": tranche["tranche"],
+                            "submission_id": market_data["submissionId"],
+                            "capacity_type": tranche["capacityType"],
+                            "fuel_type": tranche["fuelType"],
+                            "lfa_price": tranche["lfaPrice"],
+                            "notice_time": tranche["noticeTime"],
+                        })
+        
+        return rows
+
+
+def save_df(rows: list[dict]):
+    df = pd.DataFrame(_get_bid_stack_rows()).set_index("dispatch_interval")
+    try:
+        filename = data_dir / "processed_data" / "bidstack.csv"
+        df.to_csv(filename)
+        print(f"csv saved to {filename}")
+    except Exception as e:
+        print(e)
+
+
+# save_df(_get_bid_stack_rows())
+
+bidstack_filepath = data_dir / "processed_data" / "bidstack.csv"
+price_filepath = data_dir / "processed_data" / "price.parquet"
+bidstack = pd.read_csv(
+    bidstack_filepath, 
+    parse_dates=True, 
+    index_col="dispatch_interval",
+    )
+bidstack = bidstack.loc[:, ["code", "quantity", "submitted_price", "tranche"]]
+
+price = pd.read_parquet(price_filepath)
+ts = "2026-08-12T08:00"
+energy_price = price.loc[price.index == ts].values.flatten()
+
+print(f"Energy price: {energy_price}")
+
+print(bidstack.loc[((bidstack.index == ts))])
+
+print(bidstack.loc[((bidstack.index == ts))].sort_values(by="submitted_price"))
+
+
+
+
+def explore_case_input():
     rows = []
     with open(case_input_path, "rb") as f:
-        case_data = ijson.items(f, "data.caseData.item")
+        case_data = ijson.items(f, "data.caseData.item", use_float=True)
         tag_set = set()
+        
+        data = next(case_data)
+        
+        pprint(list(data.keys()))
+        
+        for field in data:
+            item = data[field]
 
-        for data in case_data:
-            scada = data["scada"]
+            print(f"\n--- Fieldname: {field} ---")
+            print(f"Type: {type(item)}")
+            print(f"Example:")
+            
+            if isinstance(item, str):
+                pprint(item)
+            
+            if isinstance(item, list):
+                pprint(item[0])
+                pprint(item[-1])
+                
+            if isinstance(item, dict):
+                dict_keys = list(item.keys())
+                print(f"Dict keys:")
+                pprint(dict_keys)
+                
+                for key in dict_keys:
+                    dict_content = data[field][key]
+                    print(f"\nKey: {key}")
+                    print(f"Type: {type(dict_content)}")
+                    
+                    if isinstance(dict_content, str):
+                        print(dict_content)
+                    
+                    if isinstance(dict_content, list):
+                        try:
+                            print("Example:")
+                            pprint(item[0])
+                            pprint(item[-1])
+                        except KeyError:
+                            if len(item) < 1:
+                                print(f"List is empty")
+                            else:
+                                print(f"Unknown error")
+                            continue
+                    
+                    if isinstance(dict_content, dict):
+                        dict_keys = list(dict_content.keys())
+                        print(f"Dict keys:")
+                        pprint(dict_keys)
 
-            for item in scada:
-                tag = item["tag"]
-
-                if "tranche" in tag.lower():
-                    print(tag)
-
-        pprint(tag_set)
-        #     for item in scada:
-        #         if "demand" in item["tag"].lower() or "dpv" in item["tag"].lower():
-        #             rows.append(
-        #                 {"dispatch_interval": data["dispatchInterval"], "tag": item["tag"], "value": item["value"]}
-        #             )
-
-    # return pd.DataFrame(rows).pivot(index="dispatch_interval", columns="tag", values="value")
 
 
-explore_case_input()
+
+# explore_case_input()
 
 # df = explore_case_input()
 # print(df.head(20))
