@@ -9,6 +9,7 @@ from tools.df_management import (
     clean_charge_level_df,
     derive_capacity_from_observed_max,
     flag_out_of_range,
+    mask_sustained_zero_runs,
     save_df_to_csv,
     save_df_to_parquet,
 )
@@ -16,6 +17,7 @@ from tools.paths import repo_processed_data_dir
 from visualisation.plot_distributions import plot_distribution_grid
 from visualisation.plot_heatmap import plot_heatmap_grid
 from visualisation.plot_soc import plot_event_day_summaries
+from visualisation.plot_time_of_day import plot_soc_timeofday_box_grid, plot_soc_timeofday_fan_grid
 from wem_data.parse_case_input import build_charge_level_and_demand_df
 from wem_data.parse_dispatch_solution import build_price_and_power_df
 
@@ -147,6 +149,10 @@ def main():
     if raw_soc_df is not None:
         cleaned_soc_df = _step("clean SOC (999 sentinel)", clean_charge_level_df, raw_soc_df)
         if cleaned_soc_df is not None:
+            cleaned_soc_df = _step(
+                "mask sustained zero-SOC artifacts", mask_sustained_zero_runs, cleaned_soc_df
+            )
+        if cleaned_soc_df is not None:
             observed_capacity_MWh = _step(
                 "derive observed SOC capacity", derive_capacity_from_observed_max, cleaned_soc_df
             )
@@ -219,6 +225,24 @@ def main():
             title="Battery SOC heatmap (MWh) — entire timeframe",
             filename="timeframe_soc_heatmap_grid_mwh.png",
             vmax=soc_df[battery_codes].max().max(),
+        )
+        _step(
+            "plot: SOC time-of-day fan grid (past year)",
+            plot_soc_timeofday_fan_grid,
+            soc_df,
+            "_soc_pct",
+            "SOC (%)",
+            "Battery SOC by time of day — past year",
+            "soc_timeofday_fan_grid.png",
+        )
+        _step(
+            "plot: SOC time-of-day box grid (past year)",
+            plot_soc_timeofday_box_grid,
+            soc_df,
+            "_soc_pct",
+            "SOC (%)",
+            "Battery SOC by time of day — past year",
+            "soc_timeofday_box_grid.png",
         )
     else:
         logger.warning("skipping SOC plots - no SOC data")

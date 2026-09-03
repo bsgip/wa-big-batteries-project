@@ -29,7 +29,7 @@ def _setup_event_axes(ax: plt.Axes, event: dict, tz):
 
     peak_start = pd.Timestamp(f"{date} {PEAK_ESROI_START}", tz=tz)
     peak_end = pd.Timestamp(f"{date} {PEAK_ESROI_END}", tz=tz)
-    ax.axvspan(peak_start, peak_end, color="gold", alpha=0.2, zorder=0, label="Peak ESROI (17:30-21:00)")
+    ax.axvspan(peak_start, peak_end, color="gold", alpha=0.2, zorder=0, label=f"Peak ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END})")
 
     if event["highest_stress_time"]:
         highest_stress_time = pd.Timestamp(f"{date} {event['highest_stress_time']}", tz=tz)

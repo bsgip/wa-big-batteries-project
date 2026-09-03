@@ -63,7 +63,7 @@ battery_capacity_MW = {
 # fixed daily shading window used on every event-day plot ("Peak ESROI"),
 # replacing the old per-event start/end times below
 PEAK_ESROI_START = "17:30"
-PEAK_ESROI_END = "21:00"
+PEAK_ESROI_END = "21:30"
 
 system_stress_events = [
     {"date": "2024-12-10", "event_start_time": "15:00", "event_end_time": "20:30", "highest_stress_time": "18:35"},

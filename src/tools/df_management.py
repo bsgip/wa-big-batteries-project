@@ -35,6 +35,40 @@ def clean_charge_level_df(df: pd.DataFrame) -> pd.DataFrame:
     return df.replace(CHARGE_LEVEL_SENTINEL, float("nan"))
 
 
+def mask_sustained_zero_runs(df: pd.DataFrame, min_run_minutes: int = 60) -> pd.DataFrame:
+    """Treat a battery's chargeLevel reading as missing (NaN) rather than a
+    real 0 whenever it holds at exactly 0 for at least `min_run_minutes`
+    straight - a battery genuinely sitting at 0 MWh for that long while the
+    market keeps dispatching is implausible.
+
+    E.g. COLLIE_ESR1 has zero-runs up to 260h, and COLLIE_ESR4/COLLIE_ESR5
+    share an identical ~335h zero run starting at the exact same 5-min
+    timestamp as KWINANA_ESR1's own zero run - a shared-outage signature,
+    not independent battery behaviour. Unlike CHARGE_LEVEL_SENTINEL (999),
+    this hasn't been confirmed against raw SCADA JSON (see
+    clean_charge_level_df) - it's a statistical heuristic, so re-check
+    against raw data if/when it's available for these periods. A short
+    isolated 0 (a real battery briefly fully discharging) is left alone.
+    """
+    df = df.copy()
+    interval_minutes = df.index.to_series().diff().median().total_seconds() / 60
+    min_run_length = max(1, round(min_run_minutes / interval_minutes))
+
+    for code in battery_codes:
+        if code not in df:
+            continue
+        is_zero = df[code] == 0
+        run_id = (is_zero != is_zero.shift()).cumsum()
+        run_length = is_zero.groupby(run_id).transform("size")
+        sustained_zero = is_zero & (run_length >= min_run_length)
+        n_masked = sustained_zero.sum()
+        if n_masked:
+            logger.info(f"{code}: masking {n_masked} sustained-zero readings as missing")
+        df.loc[sustained_zero, code] = float("nan")
+
+    return df
+
+
 def derive_capacity_from_observed_max(df: pd.DataFrame) -> dict[str, float]:
     """Empirically derive a per-battery capacity dict from the observed max
     value in `df`'s columns, for use when a documented rated capacity looks

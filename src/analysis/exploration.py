@@ -103,13 +103,12 @@ bidstack = bidstack.loc[:, ["code", "quantity", "submitted_price", "tranche"]]
 
 price = pd.read_parquet(price_filepath)
 ts = "2026-08-12T08:00"
-energy_price = price.loc[price.index == ts].values.flatten()
+energy_price = price.loc[price.index == ts].values.item()
 
 print(f"Energy price: {energy_price}")
 
-print(bidstack.loc[((bidstack.index == ts))])
 
-print(bidstack.loc[((bidstack.index == ts))].sort_values(by="submitted_price"))
+print(bidstack.loc[((bidstack.index = ts) & (bidstack["submitted_price"] <= energy_price))].sort_values(by="submitted_price"))
 
 
 
