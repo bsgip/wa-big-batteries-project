@@ -18,7 +18,7 @@ from visualisation.plot_distributions import plot_distribution_grid
 from visualisation.plot_heatmap import plot_heatmap_grid
 from visualisation.plot_soc import plot_event_day_summaries
 from visualisation.plot_time_of_day import plot_soc_timeofday_box_grid, plot_soc_timeofday_fan_grid
-from wem_data.parse_case_input import build_charge_level_and_demand_df
+from wem_data.parse_case_input import build_case_input_data
 from wem_data.parse_dispatch_solution import build_price_and_power_df
 
 logger = logging.getLogger(__name__)
@@ -101,18 +101,38 @@ def build_stress_event_data(
 # cached parquet and re-extracting.
 
 
-def _extract_soc_and_demand():
-    soc_path = repo_processed_data_dir / "soc.parquet"
-    demand_path = repo_processed_data_dir / "demand.parquet"
+#  parse_case_input.build_case_input_data()'s field name -> saved filename.
+#  "charge_level" saves as soc.parquet (the established name for that
+#  processed output); everything else matches its field name. Adding a new
+#  field there just needs one more entry here - nothing else in main()
+#  changes.
+_CASE_INPUT_FILENAMES = {
+    "charge_level": "soc.parquet",
+    "demand": "demand.parquet",
+    "bidstack": "bidstack.parquet",
+}
 
-    if soc_path.exists() and demand_path.exists():
-        logger.info(f"{soc_path.name} and {demand_path.name} already exist, loading instead of re-extracting")
-        return pd.read_parquet(soc_path), pd.read_parquet(demand_path)
 
-    soc_df, demand_df = build_charge_level_and_demand_df(max_workers=12)
-    save_df_to_parquet(soc_df, soc_path)
-    save_df_to_parquet(demand_df, demand_path)
-    return soc_df, demand_df
+def _extract_case_input_data() -> dict[str, pd.DataFrame]:
+    """Load whichever fields are already cached on disk, and only extract
+    the ones that are missing - if e.g. soc.parquet and demand.parquet
+    already exist and only bidstack.parquet doesn't, this walks the corpus
+    once and runs just the bidstack extractor, not all three."""
+    paths = {name: repo_processed_data_dir / filename for name, filename in _CASE_INPUT_FILENAMES.items()}
+
+    cached = {name: pd.read_parquet(path) for name, path in paths.items() if path.exists()}
+    missing = [name for name in _CASE_INPUT_FILENAMES if name not in cached]
+
+    if not missing:
+        logger.info(f"{', '.join(p.name for p in paths.values())} already exist, loading instead of re-extracting")
+        return cached
+
+    logger.info(f"extracting missing field(s) {missing} from caseInputData ({list(cached)} already cached)")
+    fresh = build_case_input_data(max_workers=12, fields=missing)
+    for name, df in fresh.items():
+        save_df_to_parquet(df, paths[name])
+
+    return {**cached, **fresh}
 
 
 def _extract_power_and_price():
@@ -132,9 +152,10 @@ def _extract_power_and_price():
 def main():
     repo_processed_data_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Extracting/loading raw SOC (chargeLevel) and demand from caseInputData...")
-    soc_demand = _step("extract/load raw SOC and demand", _extract_soc_and_demand)
-    raw_soc_df, demand_df = soc_demand if soc_demand else (None, None)
+    logger.info("Extracting/loading raw case input data (SOC, demand, bidstack) from caseInputData...")
+    case_input_data = _step("extract/load raw case input data", _extract_case_input_data) or {}
+    raw_soc_df = case_input_data.get("charge_level")
+    demand_df = case_input_data.get("demand")
     demand = demand_df["dispatchCondition.demand"] if demand_df is not None else None
 
     logger.info("Extracting/loading raw power and price from dispatchSolution (slow if not cached, ~45-60min)...")
