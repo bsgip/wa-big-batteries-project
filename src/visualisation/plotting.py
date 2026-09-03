@@ -12,12 +12,15 @@ from collections.abc import Callable
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import pandas as pd
+from matplotlib import patheffects
+from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
-from main import _extract_power_and_price, _extract_soc_and_demand
+from main import _extract_case_input_data, _extract_power_and_price
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_capacity_MW, battery_codes
 from tools.df_management import clean_charge_level_df, derive_capacity_from_observed_max
-from tools.paths import repo_plots_dir
+from tools.paths import repo_plots_dir, repo_processed_data_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 
 _CLEARED_COLOR = "#2a9d5c"
@@ -59,7 +62,8 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
     if _data_cache.get("_key") == cache_key:
         return _data_cache["soc"], _data_cache["power"], _data_cache["demand"], _data_cache["price"]
 
-    raw_soc_df, demand_df = _extract_soc_and_demand()
+    case_input_data = _extract_case_input_data()
+    raw_soc_df, demand_df = case_input_data["charge_level"], case_input_data["demand"]
     power_df, price_df = _extract_power_and_price()
 
     soc_df = clean_charge_level_df(raw_soc_df)
@@ -407,10 +411,286 @@ def plot_entry_energy():
     return fig
 
 
+def _load_bidstack() -> pd.DataFrame | None:
+    """Load bidstack.parquet if it's been produced yet (see main.py's
+    _extract_case_input_data). Deliberately NOT wired into _load_data()'s
+    cache - calling that would trigger main.py's full extraction path for
+    any missing field, which is the wrong thing to do if that extraction
+    is already running elsewhere (double-walks the corpus, races on the
+    output file). Returns None with a clear message if it doesn't exist yet."""
+    path = repo_processed_data_dir / "bidstack.parquet"
+    if not path.exists():
+        print(f"{path} doesn't exist yet - run main.py to produce it")
+        return None
+    return pd.read_parquet(path)
+
+
+def _draw_bidstack_panel(ax: plt.Axes, day_code_bidstack: pd.DataFrame, norm, cmap: str = "turbo"):
+    """One battery's bid stack across one day: x = dispatch interval, bars
+    stacked by tranche (cumulative MW, lowest-tranche-number at the
+    bottom - tranches are submitted in ascending price order, so this
+    runs cheapest/most-negative-price at the bottom to priciest at the
+    top), coloured by that tranche's submitted price. Many tranches have
+    zero quantity (pure price breakpoints with no incremental capacity
+    attached) and simply don't draw a visible segment. Returns the day's
+    tz, or None if there's no data for this battery/day."""
+    if day_code_bidstack.empty:
+        ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes, color="grey", fontsize="small")
+        return None
+
+    df = day_code_bidstack.sort_values(["dispatch_interval", "tranche"]).copy()
+    df["bottom"] = df.groupby("dispatch_interval")["quantity"].cumsum() - df["quantity"]
+
+    colormap = plt.get_cmap(cmap)
+    colors = colormap(norm(df["submitted_price"].to_numpy()))
+
+    width = 5 / (24 * 60)  # 5-minute dispatch interval, in matplotlib date units (days)
+    # thin white edge on every segment - without it, adjacent tranches (and
+    # adjacent 5-min columns) with similar colours just blend into one
+    # another with no visible boundary
+    ax.bar(
+        df["dispatch_interval"],
+        df["quantity"],
+        bottom=df["bottom"],
+        width=width,
+        color=colors,
+        align="edge",
+        edgecolor="white",
+        linewidth=0.4,
+    )
+    ax.axhline(0, color="grey", linewidth=0.8, zorder=2)
+
+    return df["dispatch_interval"].dt.tz
+
+
+_SOC_LINE_COLOR = "black"
+_CLEARING_PRICE_LINE_COLOR = "#FFD400"
+
+
+def _overlay_soc_and_price(ax: plt.Axes, soc: pd.Series | None, price: pd.Series | None, show_ticks: bool):
+    """Twin-axis overlay of stored energy (SOC, MWh) and market clearing
+    price ($/MWh) on top of a bid-stack panel. Deliberately breaks plot_day's
+    "no twinx" rule - here the overlay IS the point (see how SOC and where
+    the market cleared line up against this battery's own offer stack), not
+    an accident of cramming unrelated series onto one frame. Both lines get
+    a high-contrast stroke outline so they stay legible against the
+    colour-coded bars underneath regardless of bar colour. `show_ticks`
+    only draws axis numbers/labels (kept off half the grid - see caller - to
+    cut clutter; the lines themselves always draw)."""
+    ax_soc = ax.twinx()
+    if soc is not None and not soc.empty:
+        ax_soc.plot(
+            soc.index,
+            soc.to_numpy(),
+            color=_SOC_LINE_COLOR,
+            linewidth=2,
+            zorder=6,
+            path_effects=[patheffects.Stroke(linewidth=3.6, foreground="white"), patheffects.Normal()],
+        )
+    ax_soc.set_ylim(bottom=0)
+    ax_soc.yaxis.set_major_locator(mticker.MaxNLocator(nbins=3))
+    if show_ticks:
+        ax_soc.set_ylabel("SOC (MWh)", fontsize="x-small", color=_SOC_LINE_COLOR)
+        ax_soc.tick_params(axis="y", labelsize="x-small", colors=_SOC_LINE_COLOR)
+    else:
+        ax_soc.set_yticklabels([])
+        ax_soc.tick_params(axis="y", length=0)
+
+    ax_price = ax.twinx()
+    ax_price.spines["right"].set_position(("axes", 1.14))
+    if price is not None and not price.empty:
+        ax_price.plot(
+            price.index,
+            price.to_numpy(),
+            color=_CLEARING_PRICE_LINE_COLOR,
+            linewidth=1.8,
+            linestyle="--",
+            zorder=6,
+            path_effects=[patheffects.Stroke(linewidth=3.2, foreground="black"), patheffects.Normal()],
+        )
+    ax_price.yaxis.set_major_locator(mticker.MaxNLocator(nbins=3))
+    if show_ticks:
+        ax_price.set_ylabel("Clearing price ($/MWh)", fontsize="x-small", color="#8a6800")
+        ax_price.tick_params(axis="y", labelsize="x-small", colors="#8a6800")
+        ax_price.spines["right"].set_visible(True)
+    else:
+        ax_price.set_yticklabels([])
+        ax_price.tick_params(axis="y", length=0)
+        ax_price.spines["right"].set_visible(False)
+
+
+def _build_price_norm(color_mode: str, combined: pd.DataFrame, price_clip: float, symlog_linthresh: float):
+    abs_max = combined["submitted_price"].abs().max()
+    if not abs_max or pd.isna(abs_max):
+        abs_max = 1.0
+
+    if color_mode == "clip":
+        return TwoSlopeNorm(vmin=-price_clip, vcenter=0, vmax=price_clip), "both"
+    if color_mode == "minmax":
+        return TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max), "neither"
+    if color_mode == "symlog":
+        return SymLogNorm(linthresh=symlog_linthresh, vmin=-abs_max, vmax=abs_max, base=10), "neither"
+    raise ValueError(f"unknown color_mode {color_mode!r}; expected 'clip', 'minmax', or 'symlog'")
+
+
+def plot_bidstack_comparison(
+    day: str,
+    days_before: int = 7,
+    units: list[str] | None = None,
+    bidstack_df: pd.DataFrame | None = None,
+    color_mode: str = "minmax",
+    price_clip: float = 300,
+    symlog_linthresh: float = 50,
+    overlay_soc_and_price: bool = False,
+):
+    """6 rows (one per battery) x 2 columns (week-before | day) grid: each
+    panel is that battery's bid stack across the day (see
+    _draw_bidstack_panel) - x = time, bars stacked by tranche (cumulative
+    MW), coloured by submitted price (turbo rainbow colormap - blue/green =
+    low or negative price, yellow/red = high price), shared across the
+    whole figure. Rainbow instead of a 2-colour diverging map so adjacent
+    price bands stay visually distinct instead of everything mid-range
+    collapsing toward the same pale colour. `color_mode` controls how price
+    maps to colour:
+      - "clip" (default): fixed +/-`price_clip` bounds: a handful of
+        tranches sit at the AEMO offer price ceiling/floor (~+-$1000), and
+        letting those set the scale washes out the range most bids
+        actually live in, so anything beyond `price_clip` just saturates
+        to full-intensity red/blue instead of stretching the scale.
+      - "minmax": bounds are the actual +-max(abs(price)) in the figure -
+        no clipping, but a single extreme bid can flatten everything else.
+      - "symlog": symmetric log scale (linear within +-`symlog_linthresh`,
+        log beyond) - compresses extreme values without hard-clipping them.
+    Each row's y-axis (MW) is shared across its own two columns, like
+    plot_day_comparison.
+
+    Pass `bidstack_df` directly to bypass the normal parquet-cache loader -
+    e.g. to test against a small hand-fetched sample before the full
+    extraction has finished. Defaults to loading
+    data/processed_data/bidstack.parquet."""
+    units = units or battery_codes
+    compare_day = (pd.Timestamp(day) - pd.Timedelta(days=days_before)).strftime("%Y-%m-%d")
+
+    if bidstack_df is None:
+        bidstack_df = _load_bidstack()
+    if bidstack_df is None:
+        return None
+
+    day_data = bidstack_df[bidstack_df["dispatch_interval"].dt.strftime("%Y-%m-%d") == day]
+    compare_data = bidstack_df[bidstack_df["dispatch_interval"].dt.strftime("%Y-%m-%d") == compare_day]
+
+    if day_data.empty and compare_data.empty:
+        print(f"{day}: no bidstack data for either {compare_day} or {day}, skipping plot_bidstack_comparison")
+        return None
+
+    norm, extend = _build_price_norm(color_mode, pd.concat([day_data, compare_data]), price_clip, symlog_linthresh)
+
+    if overlay_soc_and_price:
+        soc_df, _, _, price = _load_data()
+        compare_soc, day_soc = _slice_day(soc_df, compare_day), _slice_day(soc_df, day)
+        compare_price, day_price = _slice_day(price, compare_day), _slice_day(price, day)
+
+    n = len(units)
+    # the SOC/price overlay needs an offset third spine on the right of each
+    # panel, so it gets extra right-margin and column spacing the plain
+    # bidstack-only layout doesn't need
+    gridspec_kw = (
+        {"hspace": 0.15, "wspace": 0.35, "top": 0.92, "left": 0.06, "right": 0.78}
+        if overlay_soc_and_price
+        else {"hspace": 0.15, "wspace": 0.08, "top": 0.92, "right": 0.90}
+    )
+    fig, axes = plt.subplots(
+        n,
+        2,
+        sharex="col",
+        sharey="row",
+        figsize=(22 if overlay_soc_and_price else 20, 2.3 * n),
+        gridspec_kw=gridspec_kw,
+        squeeze=False,
+    )
+
+    tz = None
+    for i, code in enumerate(units):
+        left_ax, right_ax = axes[i, 0], axes[i, 1]
+        left_tz = _draw_bidstack_panel(left_ax, compare_data[compare_data["code"] == code], norm)
+        right_tz = _draw_bidstack_panel(right_ax, day_data[day_data["code"] == code], norm)
+        tz = tz or left_tz or right_tz
+
+        left_ax.set_ylabel(f"{code}\nMW", fontsize="small")
+        right_ax.set_ylabel("")
+        plt.setp(right_ax.get_yticklabels(), visible=False)
+        _style_axes(left_ax)
+        _style_axes(right_ax)
+
+        if overlay_soc_and_price:
+            left_soc = compare_soc[code] if compare_soc is not None and code in compare_soc else None
+            right_soc = day_soc[code] if day_soc is not None and code in day_soc else None
+            # only the right (day) column carries axis numbers for the
+            # overlay - both columns still draw the lines, this just halves
+            # the tick clutter across a grid that's already dense
+            _overlay_soc_and_price(left_ax, left_soc, compare_price, show_ticks=False)
+            _overlay_soc_and_price(right_ax, right_soc, day_price, show_ticks=True)
+
+    if tz is None:
+        print(f"{day}: no data for either date after all, skipping plot_bidstack_comparison")
+        plt.close(fig)
+        return None
+
+    compare_start = pd.Timestamp(compare_day, tz=tz)
+    day_start = pd.Timestamp(day, tz=tz)
+
+    axes[-1, 0].set_xlim(compare_start, compare_start + pd.Timedelta(days=1))
+    axes[-1, 1].set_xlim(day_start, day_start + pd.Timedelta(days=1))
+
+    for col in (0, 1):
+        ax = axes[-1, col]
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=tz))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz))
+        ax.set_xlabel("Time (AWST)")
+        for row in range(n - 1):
+            plt.setp(axes[row, col].get_xticklabels(), visible=False)
+
+    axes[0, 0].set_title(f"{compare_day}  (week before)", fontsize="medium")
+    axes[0, 1].set_title(f"{day}  (stress event)", fontsize="medium")
+
+    cbar_labels = {
+        "clip": f"Submitted price ($/MWh, clipped at +/-{price_clip:.0f})",
+        "minmax": "Submitted price ($/MWh)",
+        "symlog": f"Submitted price ($/MWh, symlog, linear within +/-{symlog_linthresh:.0f})",
+    }
+
+    sm = plt.cm.ScalarMappable(norm=norm, cmap="turbo")
+    sm.set_array([])
+    cbar_x = 0.97 if overlay_soc_and_price else 0.92
+    cbar_ax = fig.add_axes((cbar_x, 0.15, 0.012, 0.7))
+    fig.colorbar(sm, cax=cbar_ax, label=cbar_labels[color_mode], extend=extend)
+
+    suptitle_y = 0.975
+    if overlay_soc_and_price:
+        overlay_handles = [
+            plt.Line2D([0], [0], color=_SOC_LINE_COLOR, linewidth=2, label="SOC (MWh)"),
+            plt.Line2D(
+                [0], [0], color=_CLEARING_PRICE_LINE_COLOR, linewidth=1.8, linestyle="--", label="Clearing price ($/MWh)"
+            ),
+        ]
+        fig.legend(
+            handles=overlay_handles, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncols=2, fontsize="small", frameon=False
+        )
+        suptitle_y = 1.04
+
+    fig.suptitle(f"Bid stack: {day} vs {days_before} days before", y=suptitle_y)
+    fig.align_ylabels(list(axes[:, 0]))
+
+    save_figure(fig, repo_plots_dir / "bidstack-comparison" / f"{day}_bidstack_vs_week_before_{color_mode}.png")
+    return fig
+
+
 def regenerate_new_plots():
     """Regenerate every plot this module produces: day (MWh + % variants),
-    day-vs-week-before comparison (MWh + % variants), and headroom for each
-    system_stress_events date, plus the whole-record entry-energy scatter."""
+    day-vs-week-before comparison (MWh + % variants), bidstack comparison,
+    and headroom for each system_stress_events date, plus the whole-record
+    entry-energy scatter. Bidstack comparison is skipped automatically
+    (with a message) until bidstack.parquet exists."""
     from tools.constants import system_stress_events
 
     for event in system_stress_events:
@@ -418,6 +698,7 @@ def regenerate_new_plots():
         plot_day(event["date"], soc_unit="pct")
         plot_day_comparison(event["date"], soc_unit="mwh")
         plot_day_comparison(event["date"], soc_unit="pct")
+        plot_bidstack_comparison(event["date"])
         plot_headroom(event["date"])
 
     plot_entry_energy()
