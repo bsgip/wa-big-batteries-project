@@ -170,8 +170,7 @@ cython_debug/
 .idea
 
 # Data
-src/quick_downloads/
-data/
+data/sample_raw_data
 
 # Misc
 src/aemo_ingest
