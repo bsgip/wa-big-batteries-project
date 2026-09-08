@@ -169,8 +169,10 @@ cython_debug/
 # PyCharm
 .idea
 
-# Data
+# Big data
 data/sample_raw_data
+data/quick_downloads/caseinput_json.json
+data/quick_downloads/scada_json.json
 
 # Misc
 src/aemo_ingest
