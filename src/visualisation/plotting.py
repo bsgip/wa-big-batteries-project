@@ -17,7 +17,7 @@ import pandas as pd
 from matplotlib import patheffects
 from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
-from main import _extract_case_input_data, _extract_power_and_price
+from analysis.extract_raw_data import _extract_case_input_data, _extract_power_and_price
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_capacity_MW, battery_codes
 from tools.df_management import clean_charge_level_df, derive_capacity_from_observed_max
 from tools.paths import repo_plots_dir, repo_processed_data_dir
