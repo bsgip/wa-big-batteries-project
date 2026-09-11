@@ -39,16 +39,17 @@ def plot_soc_timeofday_fan_grid(
     ylabel: str,
     title: str,
     filename: str,
-    lookback_days: int | None = 365,
+    lookback_days: int | None = None,
 ):
     """Grid of one time-of-day fan chart per battery: median line with
-    25-75% and 5-95% shaded bands, built from the `<code><column_suffix>`
-    columns of `df`, binned to 5-min-of-day resolution across the last
-    `lookback_days` of data (None uses the whole df)."""
+    25-75%, 5-95%, and min-max (0-100%) shaded bands, built from the
+    `<code><column_suffix>` columns of `df`, binned to 5-min-of-day
+    resolution across the last `lookback_days` of data (None uses the
+    whole df)."""
     df = _lookback_slice(df, lookback_days)
     hour = df.index.hour + df.index.minute / 60
 
-    quantiles = [0.05, 0.25, 0.5, 0.75, 0.95]
+    quantiles = [0, 0.05, 0.25, 0.5, 0.75, 0.95, 1]
     rows, cols = _grid_shape(len(battery_codes))
     fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), squeeze=False)
 
@@ -68,9 +69,10 @@ def plot_soc_timeofday_fan_grid(
             long_df = pd.DataFrame({"hour": hour, "value": df[col].to_numpy()}).dropna()
             if not long_df.empty:
                 q = long_df.groupby("hour")["value"].quantile(quantiles).unstack()
-                ax.fill_between(q.index, q[0.05], q[0.95], color="tab:blue", alpha=0.15, label="5th-95th percentile")
+                ax.fill_between(q.index, q[0], q[1], color="tab:blue", alpha=0.15, label="min-max")
+                ax.fill_between(q.index, q[0.05], q[0.95], color="tab:blue", alpha=0.20, label="5th-95th percentile")
                 ax.fill_between(q.index, q[0.25], q[0.75], color="tab:blue", alpha=0.35, label="25th-75th percentile")
-                ax.plot(q.index, q[0.5], color="tab:blue", linewidth=1.5, label="median")
+                ax.plot(q.index, q[0.5], color="tab:blue", linewidth=1.9, label="median")
 
         ax.set_title(code)
         ax.set_xlabel("time of day (hour)")
@@ -95,7 +97,7 @@ def plot_soc_timeofday_box_grid(
     ylabel: str,
     title: str,
     filename: str,
-    lookback_days: int | None = 365,
+    lookback_days: int | None = None,
 ):
     """Grid of one time-of-day box plot per battery, one box per hour,
     built from the `<code><column_suffix>` columns of `df`, over the last
@@ -126,7 +128,7 @@ def plot_soc_timeofday_box_grid(
                     groups,
                     positions=range(24),
                     widths=0.6,
-                    showfliers=False,
+                    showfliers=True,
                     patch_artist=True,
                     boxprops={"facecolor": "tab:blue", "alpha": 0.5},
                     medianprops={"color": "black"},

@@ -18,8 +18,8 @@ import pandas as pd
 
 from tools.df_management import save_df_to_parquet
 from tools.paths import repo_processed_data_dir
-from wem_data.parse_case_input import build_case_input_data
-from wem_data.parse_dispatch_solution import build_price_and_power_df
+from data_extraction.parse_case_input import build_case_input_data
+from data_extraction.parse_dispatch_solution import build_price_and_power_df
 
 logger = logging.getLogger(__name__)
 

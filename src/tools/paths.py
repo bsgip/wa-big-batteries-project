@@ -1,7 +1,14 @@
 from pathlib import Path
 
 # Setup data directory
-home_dir = Path.home()
+home_dir = Path.cwd()
+
+# Local paths
+local_data_dir = home_dir / "data"
+local_processed_data_dir = local_data_dir / "processed_data"
+local_plots_dir = local_data_dir / "plots"
+
+# VM paths
 data_dir = home_dir / "bigdata" / "wa-big-batteries-project"
 raw_data_dir = data_dir / "raw_data"
 processed_data_dir = data_dir / "processed_data"

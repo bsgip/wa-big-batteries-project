@@ -24,7 +24,7 @@ import pandas as pd
 
 from tools.constants import CASE_INPUT_DATASET, battery_codes
 from tools.paths import raw_dataset_dir
-from wem_data.download import log_and_record_parse_failures
+from data_extraction.download import log_and_record_parse_failures
 
 logger = logging.getLogger(__name__)
 

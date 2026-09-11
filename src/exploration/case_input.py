@@ -11,21 +11,27 @@ from tools.constants import DISPATCH_SOLUTION_DATASET, battery_codes
 from tools.utils import search_keyword
 
 
-pd.set_option("display.max_columns", None)
+
+def main():
+    pd.set_option("display.max_columns", None)
 
 
-# Temp dirs
-root_dir = Path.cwd()
-data_dir = root_dir / "data"
+    # Temp dirs
+    root_dir = Path.cwd()
+    data_dir = root_dir / "data" / "sample_raw_data"
 
 
-case_input_path = data_dir / "ReferenceDispatchCase_202608120800.json"
-dispatch_data_path = data_dir / "ReferenceDispatchSolution_202608140800.json"
-predispatch_data_path = data_dir / "ReferencePre-DispatchSolution_202608171100.json"
+    case_input_path = data_dir / "ReferenceDispatchCase_202608120800.json"
+    dispatch_data_path = data_dir / "ReferenceDispatchSolution_202608140800.json"
+    predispatch_data_path = data_dir / "ReferencePre-DispatchSolution_202608171100.json"
+    
+    # explore_case_input(case_input_path)
+    # explore_forecast(case_input_path)
+    explore_scada(case_input_path)
 
 
 
-def explore_dispatch():
+def explore_dispatch(dispatch_data_path):
     print(f"Dispatch Solution")
     with open(dispatch_data_path, "rb") as f:
         solution_data = ijson.items(f, "data.solutionData.item", use_float=True)
@@ -50,10 +56,9 @@ def explore_dispatch():
                     pprint(d)
 
 
-# explore_dispatch()
 
 
-def _get_bid_stack_rows():
+def get_bid_stack_rows(case_input_path):
     with open(case_input_path, "rb") as f:
         rows = []
         case_data = ijson.items(f, "data.caseData.item", use_float=True)
@@ -80,8 +85,9 @@ def _get_bid_stack_rows():
         return rows
 
 
-def save_df(rows: list[dict]):
-    df = pd.DataFrame(_get_bid_stack_rows()).set_index("dispatch_interval")
+
+def save_df(rows, data_dir):
+    df = pd.DataFrame(rows).set_index("dispatch_interval")
     try:
         filename = data_dir / "processed_data" / "bidstack.csv"
         df.to_csv(filename)
@@ -90,30 +96,9 @@ def save_df(rows: list[dict]):
         print(e)
 
 
-# save_df(_get_bid_stack_rows())
-
-bidstack_filepath = data_dir / "processed_data" / "bidstack.csv"
-price_filepath = data_dir / "processed_data" / "price.parquet"
-bidstack = pd.read_csv(
-    bidstack_filepath, 
-    parse_dates=True, 
-    index_col="dispatch_interval",
-    )
-bidstack = bidstack.loc[:, ["code", "quantity", "submitted_price", "tranche"]]
-
-price = pd.read_parquet(price_filepath)
-ts = "2026-08-12T08:00"
-energy_price = price.loc[price.index == ts].values.item()
-
-print(f"Energy price: {energy_price}")
 
 
-print(bidstack.loc[((bidstack.index = ts) & (bidstack["submitted_price"] <= energy_price))].sort_values(by="submitted_price"))
-
-
-
-
-def explore_case_input():
+def explore_case_input(case_input_path):
     rows = []
     with open(case_input_path, "rb") as f:
         case_data = ijson.items(f, "data.caseData.item", use_float=True)
@@ -168,14 +153,50 @@ def explore_case_input():
                         pprint(dict_keys)
 
 
+def explore_forecast(case_input_path):
+    with open(case_input_path, "rb") as f:
+        forecast = ijson.items(f, "data.caseData.item.unconstrainedForecast", use_float=True)
+
+        lst = []
+        codes = set()
+        for item in islice(forecast, 22, 24):
+            for tag in item:
+                print(tag)
+                codes.add(tag["facilityCode"])
+                if tag["facilityCode"] in battery_codes:
+                    lst.append(tag)
+                    
+        pprint(lst)
+        pprint(codes)
 
 
-# explore_case_input()
 
-# df = explore_case_input()
-# print(df.head(20))
+def explore_rcm(case_input_path):
+    with open(case_input_path, "rb") as f:
+        rcm = ijson.items(f, "data.caseData.item.rcmData", use_float=True)
+        facilities = set()
+        for item in rcm:
+            facilities.add(item["facilityCode"])
+            
 
-# search_keyword(dispatch_data_path, "scada")
+
+def explore_scada(case_input_path):
+    with open(case_input_path, "rb") as f:
+        rows = []
+        case_data = ijson.items(f, "data.caseData.item", use_float=True)
+
+        for item in case_data:
+            for scada in item["scada"]:
+                if "dispatchCondition" in scada["tag"]:
+                    rows.append({
+                        "dispatch_interval": item["dispatchInterval"],
+                        "tag": scada["tag"],
+                        "value": scada["value"]
+                    })
+    
+    df = pd.DataFrame(rows)
+    print(df.head())
+
 
 
 def get_df(filepath: str):
@@ -188,9 +209,6 @@ def get_df(filepath: str):
     return df
 
 
-def plot(filepath: str, saved_filename: str):
-    df = get_df(filepath)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(df)
-    fig.savefig(saved_filename, dpi=200)
+if __name__ == "__main__":
+    main()
