@@ -57,6 +57,17 @@ def _extract_demand(item: dict) -> list[dict]:
     return rows
 
 
+def _extract_dispatch_condition(item: dict) -> list[dict]:
+    """System-wide dispatch condition SCADA tags (e.g. loadRelief)."""
+    dispatch_interval = item["dispatchInterval"]
+    rows = []
+    for scada in item["scada"]:
+        tag = scada["tag"]
+        if "dispatchCondition" in tag:
+            rows.append({"dispatch_interval": dispatch_interval, "tag": tag, "value": scada["value"]})
+    return rows
+
+
 def _extract_bidstack(item: dict) -> list[dict]:
     """Battery offer tranches (bid stack), off
     markets.energy.facilities[].tranches[]."""
@@ -129,7 +140,11 @@ _FIELDS = {
     "charge_level": (_extract_charge_level, _finish_wide("dispatch_interval", "code")),
     "demand": (_extract_demand, _finish_wide("dispatch_interval", "tag")),
     "bidstack": (_extract_bidstack, _finish_bidstack),
+    "dispatch_condition": (_extract_dispatch_condition, _finish_wide("dispatch_interval", "tag")),
 }
+
+# For catalog.py to validate its entries against at import time.
+FIELD_NAMES = list(_FIELDS)
 
 
 def _get_case_input_rows(path: Path, field_names: list[str]) -> tuple[dict[str, list[dict]], str | None]:

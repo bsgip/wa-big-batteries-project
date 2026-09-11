@@ -2,8 +2,9 @@
 view, a headroom (stored vs required energy) view that carries the adequacy
 argument, and a whole-record entry-energy adequacy scatter.
 
-Reuses the same raw-data loaders and cleaning already in this repo (see
-main.py, tools/df_management.py) rather than inventing a new schema. Keeps
+Reuses the same datasets and cleaning already in this repo (see
+data_extraction/catalog.py, data_processing/soc.py) rather than inventing a
+new schema. Keeps
 plot_heatmap.py/plot_distributions.py/plot_soc.py untouched - this is an
 addition, not a replacement.
 """
@@ -17,10 +18,10 @@ import pandas as pd
 from matplotlib import patheffects
 from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
-from analysis.extract_raw_data import _extract_case_input_data, _extract_power_and_price
+from data_extraction.catalog import is_extracted, load, load_many
+from data_processing.soc import clean_charge_level_df, derive_capacity_from_observed_max
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_capacity_MW, battery_codes
-from tools.df_management import clean_charge_level_df, derive_capacity_from_observed_max
-from tools.paths import repo_plots_dir, repo_processed_data_dir
+from tools.paths import repo_plots_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 
 _CLEARED_COLOR = "#2a9d5c"
@@ -55,32 +56,36 @@ def _gap_missing_telemetry(
 
 
 def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
-    """Load (from the data/processed_data parquet cache if present, else
-    extract fresh - see main.py) and lightly clean the raw SOC/demand/power/
-    price data. Cached in-process so a batch of plot calls only loads once."""
+    """Read the extracted SOC/demand/power/price datasets and lightly clean
+    the SOC. Never triggers extraction - if something hasn't been extracted
+    yet, load_many says so (run data_extraction/main.py). Cached in-process so
+    a batch of plot calls only loads once."""
     cache_key = (zero_minutes, frozen_minutes)
     if _data_cache.get("_key") == cache_key:
         return _data_cache["soc"], _data_cache["power"], _data_cache["demand"], _data_cache["price"]
 
-    case_input_data = _extract_case_input_data()
-    raw_soc_df, demand_df = case_input_data["charge_level"], case_input_data["demand"]
-    power_df, price_df = _extract_power_and_price()
+    data = load_many(["soc", "demand", "power", "price"])
+    power_df = data["power"]
 
-    soc_df = clean_charge_level_df(raw_soc_df)
+    # Deliberately its own SOC cleaning, not data_processing.soc.process():
+    # _gap_missing_telemetry treats frozen/zero telemetry differently from
+    # process()'s mask_sustained_zero_runs, and the figures here were reviewed
+    # against this version. Works from the extracted frame, not clean/.
+    soc_df = clean_charge_level_df(data["soc"])
     for code in battery_codes:
         if code in soc_df:
             soc_df[code] = _gap_missing_telemetry(soc_df[code], zero_minutes, frozen_minutes)
 
-    demand = demand_df["dispatchCondition.demand"]
-    price = price_df["energy_price"]
+    demand = data["demand"]["dispatchCondition.demand"]
+    price = data["price"]["energy_price"]
 
     _data_cache.update(_key=cache_key, soc=soc_df, power=power_df, demand=demand, price=price)
     return soc_df, power_df, demand, price
 
 
 def _get_soc_capacity() -> dict[str, float]:
-    """Same empirically-derived-from-observed-max capacity main.py uses for
-    the SOC % columns (see tools/df_management.py) - not the documented
+    """Same empirically-derived-from-observed-max capacity data_processing
+    uses for the SOC % columns (see data_processing/soc.py) - not the documented
     battery_capacity_MWh, which has been wrong before (KWINANA_ESR2).
     Cached in-process since it requires the full record's SOC data."""
     global _capacity_cache
@@ -139,7 +144,11 @@ def _draw_day_panels(axes, day: str, soc_unit: str, units: list[str]):
         for code in units:
             if code in day_soc:
                 ax_soc.plot(
-                    day_soc.index, day_soc[code] / capacity[code] * 100, color=UNIT_COLORS[code], linewidth=1, label=code
+                    day_soc.index,
+                    day_soc[code] / capacity[code] * 100,
+                    color=UNIT_COLORS[code],
+                    linewidth=1,
+                    label=code,
                 )
         ax_soc.set_ylim(0, 100)
         ax_soc.set_ylabel("State of charge\n(%)")
@@ -266,7 +275,13 @@ def plot_day_comparison(day: str, soc_unit: str = "mwh", days_before: int = 7, u
                 break
         if handles:
             fig.legend(
-                handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.995), ncols=6, fontsize="small", frameon=False
+                handles,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 0.995),
+                ncols=6,
+                fontsize="small",
+                frameon=False,
             )
 
     fig.suptitle(f"{day} vs {days_before} days before", y=1.045)
@@ -393,7 +408,16 @@ def plot_entry_energy():
     fig, ax = plt.subplots(figsize=(13, 5.5))
     colors = cleared.map({True: _CLEARED_COLOR, False: _SHORT_COLOR})
     ax.scatter(fleet_stored.index, fleet_stored, c=colors, s=6, linewidths=0, zorder=2)
-    ax.step(required_energy.index, required_energy, where="post", color="black", linestyle="--", linewidth=1, label="requirement", zorder=1)
+    ax.step(
+        required_energy.index,
+        required_energy,
+        where="post",
+        color="black",
+        linestyle="--",
+        linewidth=1,
+        label="requirement",
+        zorder=1,
+    )
 
     handles = [
         plt.Line2D([0], [0], marker="o", linestyle="", color=_CLEARED_COLOR, label="cleared obligation"),
@@ -412,17 +436,13 @@ def plot_entry_energy():
 
 
 def _load_bidstack() -> pd.DataFrame | None:
-    """Load bidstack.parquet if it's been produced yet (see main.py's
-    _extract_case_input_data). Deliberately NOT wired into _load_data()'s
-    cache - calling that would trigger main.py's full extraction path for
-    any missing field, which is the wrong thing to do if that extraction
-    is already running elsewhere (double-walks the corpus, races on the
-    output file). Returns None with a clear message if it doesn't exist yet."""
-    path = repo_processed_data_dir / "bidstack.parquet"
-    if not path.exists():
-        print(f"{path} doesn't exist yet - run main.py to produce it")
+    """Read the bidstack dataset if it's been extracted yet, else None with a
+    clear message. Kept out of _load_data()'s cache because most plots don't
+    need it and it's by far the largest of these datasets."""
+    if not is_extracted("bidstack"):
+        print("bidstack not extracted yet - run data_extraction/main.py to produce it")
         return None
-    return pd.read_parquet(path)
+    return load("bidstack")
 
 
 def _draw_bidstack_panel(ax: plt.Axes, day_code_bidstack: pd.DataFrame, norm, cmap: str = "turbo"):
@@ -670,11 +690,21 @@ def plot_bidstack_comparison(
         overlay_handles = [
             plt.Line2D([0], [0], color=_SOC_LINE_COLOR, linewidth=2, label="SOC (MWh)"),
             plt.Line2D(
-                [0], [0], color=_CLEARING_PRICE_LINE_COLOR, linewidth=1.8, linestyle="--", label="Clearing price ($/MWh)"
+                [0],
+                [0],
+                color=_CLEARING_PRICE_LINE_COLOR,
+                linewidth=1.8,
+                linestyle="--",
+                label="Clearing price ($/MWh)",
             ),
         ]
         fig.legend(
-            handles=overlay_handles, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncols=2, fontsize="small", frameon=False
+            handles=overlay_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.0),
+            ncols=2,
+            fontsize="small",
+            frameon=False,
         )
         suptitle_y = 1.04
 

@@ -1,23 +1,20 @@
+"""Cleaning and derived columns for battery SOC (the extracted chargeLevel
+field, in MWh).
+
+`process()` is what data_processing/main.py runs; the individual steps are
+public so callers with their own requirements (e.g. visualisation/plotting.py,
+which does its own gap handling) can compose just the parts they want.
+"""
+
 import logging
-from pathlib import Path
 
 import pandas as pd
 
-from tools.constants import battery_capacity_MW, battery_capacity_MWh, battery_codes
+from tools.constants import battery_capacity_MWh, battery_codes
 
 logger = logging.getLogger(__name__)
 
 CHARGE_LEVEL_SENTINEL = 999
-
-
-def save_df_to_csv(df: pd.DataFrame, filename: Path):
-    df.to_csv(filename)
-    print(f"csv successfully saved to {filename}")
-
-
-def save_df_to_parquet(df: pd.DataFrame, filename: Path):
-    df.to_parquet(filename)
-    print(f"parquet successfully saved to {filename}")
 
 
 def clean_charge_level_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -31,7 +28,7 @@ def clean_charge_level_df(df: pd.DataFrame) -> pd.DataFrame:
     qualityFlag="good", dataSource="SCADA". Specific to chargeLevel - a
     sample of the equivalent power field (initialMw) across the
     dispatchSolution corpus found no equivalent sentinel; see
-    flag_out_of_range for a full-corpus check of that assumption."""
+    power.flag_out_of_range for a full-corpus check of that assumption."""
     return df.replace(CHARGE_LEVEL_SENTINEL, float("nan"))
 
 
@@ -95,27 +92,15 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
     return df
 
 
-def add_power_pct_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Add a <code>_power_pct column for each battery, computed from its
-    power column (MW) and rated capacity in battery_capacity_MW."""
-    for code in battery_codes:
-        if code not in df:
-            logger.warning(f"{code}: no power column found, skipping power_pct")
-            continue
-        df[f"{code}_power_pct"] = df[code] / battery_capacity_MW[code] * 100
+def process(df: pd.DataFrame) -> pd.DataFrame:
+    """Extracted SOC (MWh) -> analysis-ready: sentinel and sustained-zero
+    readings masked as missing, plus a <code>_soc_pct column per battery.
+    The bare <code> MWh columns are kept alongside the pct ones - plots use
+    both."""
+    df = clean_charge_level_df(df)
+    df = mask_sustained_zero_runs(df)
 
-    return df
+    observed_capacity_MWh = derive_capacity_from_observed_max(df)
+    logger.info(f"observed SOC capacity (MWh): {observed_capacity_MWh}")
 
-
-def flag_out_of_range(df: pd.DataFrame, capacity: dict[str, float], tolerance: float = 1.05) -> None:
-    """Log (don't drop) any values whose magnitude exceeds a battery's rated
-    capacity by more than `tolerance`. Used to check a full extraction for
-    sentinel-like values (e.g. the chargeLevel 999 case) without silently
-    dropping anything - a human should look at what's flagged."""
-    for code in battery_codes:
-        if code not in df:
-            continue
-        limit = capacity[code] * tolerance
-        n_out = df[code].abs().gt(limit).sum()
-        if n_out:
-            logger.warning(f"{code}: {n_out} values exceed {limit:.1f} (rated {capacity[code]})")
+    return add_soc_pct_columns(df, observed_capacity_MWh)

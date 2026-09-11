@@ -25,6 +25,13 @@ repo_processed_data_dir = PROJECT_ROOT / "data" / "processed_data"
 repo_plots_dir = PROJECT_ROOT / "data" / "plots"
 repo_docs_dir = PROJECT_ROOT / "docs"
 
+# The two pipeline stages, kept in separate folders so it's always obvious
+# which is which: extracted/ holds literally what came out of the raw JSON and
+# is written once per field by data_extraction; clean/ holds the cleaned and
+# derived versions, rewritten cheaply whenever data_processing changes.
+extracted_data_dir = repo_processed_data_dir / "extracted"
+clean_data_dir = repo_processed_data_dir / "clean"
+
 
 def raw_dataset_dir(dataset: str) -> Path:
     """Where download.py and the parsers keep files for one dataset, e.g.
