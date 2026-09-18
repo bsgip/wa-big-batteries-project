@@ -17,26 +17,51 @@ logger = logging.getLogger(__name__)
 CHARGE_LEVEL_SENTINEL = 999
 
 
-def clean_charge_level_df(df: pd.DataFrame) -> pd.DataFrame:
+def clean_charge_level_sentinel_df(df: pd.DataFrame) -> pd.DataFrame:
     """The chargeLevel SCADA tag reports a fixed 999 (MWh) sentinel when
     telemetry is missing/invalid (e.g. KWINANA_ESR2 sits at exactly 999 for
     long stretches, well above its 900 MWh capacity). Treat it as missing
-    data rather than a real reading.
-
-    Confirmed against the raw caseInputData JSON (not a parsing artifact):
-    AEMO's own SCADA feed reports the literal value 999 with
-    qualityFlag="good", dataSource="SCADA". Specific to chargeLevel - a
-    sample of the equivalent power field (initialMw) across the
-    dispatchSolution corpus found no equivalent sentinel; see
-    power.flag_out_of_range for a full-corpus check of that assumption."""
+    data rather than a real reading."""
     return df.replace(CHARGE_LEVEL_SENTINEL, float("nan"))
+
+
+def clean_charge_level_overshoot_df(
+    df: pd.DataFrame, capacity: dict[str, float] | None = None
+) -> pd.DataFrame:
+    """The chargeLevel data of KWINANA_ESR2 have values over its rated capacity
+    of 900 MWh (peaking at ~121%). Treat these values as maximum, i.e. clip
+    each battery's readings to its rated capacity rather than dropping them -
+    the overshoot is measurement headroom, not a missing reading.
+
+    Run this *after* clean_charge_level_sentinel_df: the 999 sentinel sits
+    above some batteries' rated capacity (e.g. KWINANA_ESR2 at 900 MWh), and
+    clipping first would silently turn it into a plausible-looking full-charge
+    reading instead of NaN.
+    """
+    capacity = capacity if capacity is not None else battery_capacity_MWh
+    df = df.copy()
+
+    for code in battery_codes:
+        if code not in df:
+            continue
+        rated = capacity[code]
+        n_clipped = (df[code] > rated).sum()
+
+        if n_clipped:
+            logger.info(
+                f"{code}: clipping {n_clipped} readings above rated capacity "
+                f"({rated} MWh, max observed {df[code].max():.1f} MWh)"
+            )
+        df[code] = df[code].clip(upper=rated)
+
+    return df
 
 
 def mask_sustained_zero_runs(df: pd.DataFrame, min_run_minutes: int = 60) -> pd.DataFrame:
     """Treat a battery's chargeLevel reading as missing (NaN) rather than a
     real 0 whenever it holds at exactly 0 for at least `min_run_minutes`
-    straight - a battery genuinely sitting at 0 MWh for that long while the
-    market keeps dispatching is implausible.
+    straight - this accounts for outages and readings during the battery's
+    initial stage of commissioning.
 
     E.g. COLLIE_ESR1 has zero-runs up to 260h, and COLLIE_ESR4/COLLIE_ESR5
     share an identical ~335h zero run starting at the exact same 5-min
@@ -66,17 +91,6 @@ def mask_sustained_zero_runs(df: pd.DataFrame, min_run_minutes: int = 60) -> pd.
     return df
 
 
-def derive_capacity_from_observed_max(df: pd.DataFrame) -> dict[str, float]:
-    """Empirically derive a per-battery capacity dict from the observed max
-    value in `df`'s columns, for use when a documented rated capacity looks
-    stale/wrong. E.g. KWINANA_ESR2's documented battery_capacity_MWh (900)
-    made its observed chargeLevel readings peak at 121% SOC, far more than
-    every other battery's ~100-105% (plausible measurement headroom) - using
-    the observed max instead pins that battery's own peak reading at exactly
-    100% rather than guessing at a "corrected" documented value."""
-    return {code: df[code].max() for code in battery_codes if code in df}
-
-
 def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
     """Add a <code>_soc_pct column for each battery, computed from its
     charge_level column (MWh) and a rated capacity - battery_capacity_MWh by
@@ -92,15 +106,54 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
     return df
 
 
+def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
+    """Add fleet-wide aggregates across the battery_codes columns:
+
+    - fleet_capacity_MWh  rated capacity of the commissioned fleet
+    - fleet_soc_MWh       stored energy summed over the batteries reporting
+    - fleet_soc_pct       the second as a percentage of the first
+
+    fleet_capacity_MWh is a monotonic step function, not the constant ~5767
+    MWh total: the fleet commissions in stages (KWINANA_ESR1 from 2023-09,
+    COLLIE_ESR5 only from 2026-01), so a constant total would show the 2023
+    fleet sitting at a meaningless ~2% SOC. A battery counts from its first
+    non-NaN reading onwards and stays in the total through any later gap -
+    the battery still exists during an outage.
+
+    A commissioned battery with no reading therefore contributes its capacity
+    but no stored energy, so an outage pulls fleet_soc_pct down - intended,
+    since unavailable energy is unavailable to the system whatever the cause.
+    Note this makes fleet_soc_pct a measure of usable fleet energy, not of
+    how charged the reporting batteries are; 3-12% of each battery's
+    post-commissioning readings are missing, so the dips are frequent.
+
+    Rows before any battery reports get NaN (not 0) throughout.
+    """
+    rated = battery_capacity_MWh if capacity is None else capacity
+    codes_present = [code for code in battery_codes if code in df]
+    if not codes_present:
+        logger.warning("no battery SOC columns found, skipping fleet columns")
+        return df
+
+    reporting = df[codes_present].notna()
+    commissioned = reporting.cummax()  # latches True from each battery's first reading
+    live = commissioned.any(axis=1)
+
+    df["fleet_capacity_MWh"] = commissioned.mul([rated[code] for code in codes_present]).sum(axis=1).where(live)
+    df["fleet_soc_MWh"] = df[codes_present].sum(axis=1).where(live)
+    df["fleet_soc_pct"] = df["fleet_soc_MWh"] / df["fleet_capacity_MWh"] * 100
+
+    return df
+
+
 def process(df: pd.DataFrame) -> pd.DataFrame:
     """Extracted SOC (MWh) -> analysis-ready: sentinel and sustained-zero
     readings masked as missing, plus a <code>_soc_pct column per battery.
     The bare <code> MWh columns are kept alongside the pct ones - plots use
     both."""
-    df = clean_charge_level_df(df)
+    df = clean_charge_level_sentinel_df(df)
+    df = clean_charge_level_overshoot_df(df)
     df = mask_sustained_zero_runs(df)
+    df = add_fleet_soc_columns(df)
 
-    observed_capacity_MWh = derive_capacity_from_observed_max(df)
-    logger.info(f"observed SOC capacity (MWh): {observed_capacity_MWh}")
-
-    return add_soc_pct_columns(df, observed_capacity_MWh)
+    return add_soc_pct_columns(df)

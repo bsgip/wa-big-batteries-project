@@ -3,7 +3,8 @@ initialMw field, in MW - positive discharging, negative charging).
 
 No sentinel masking here: unlike SOC's chargeLevel 999 (see soc.py), a
 sample of initialMw across the dispatchSolution corpus found no equivalent
-sentinel value. flag_out_of_range is the full-corpus check on that.
+sentinel value - a full-corpus check confirmed it, the worst overshoot being
+KWINANA_ESR1 at 1.9% over its rating.
 """
 
 import logging
@@ -27,25 +28,30 @@ def add_power_pct_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def flag_out_of_range(df: pd.DataFrame, capacity: dict[str, float], tolerance: float = 1.05) -> None:
-    """Log (don't drop) any values whose magnitude exceeds a battery's rated
-    capacity by more than `tolerance`. Used to check a full extraction for
-    sentinel-like values (e.g. the chargeLevel 999 case) without silently
-    dropping anything - a human should look at what's flagged."""
+def clean_power_overshoot_df(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
+    """Clip each battery's power to +/- its rated capacity in MW. The clip is
+    symmetric because initialMw is signed - positive discharging, negative
+    charging - so both directions are capped at the rating."""
+    rated_capacity = battery_capacity_MW if capacity is None else capacity
+    df = df.copy()
+
     for code in battery_codes:
         if code not in df:
             continue
-        limit = capacity[code] * tolerance
-        n_out = df[code].abs().gt(limit).sum()
-        if n_out:
-            logger.warning(f"{code}: {n_out} values exceed {limit:.1f} (rated {capacity[code]})")
+        rated = rated_capacity[code]
+        n_clipped = df[code].abs().gt(rated).sum()
+        if n_clipped:
+            logger.info(f"{code}: clipping {n_clipped} readings above rated capacity ({rated} MW)")
+        df[code] = df[code].clip(lower=-rated, upper=rated)
+
+    return df
 
 
 def process(df: pd.DataFrame) -> pd.DataFrame:
-    """Extracted power (MW) -> analysis-ready: a <code>_power_pct column per
-    battery, alongside the bare <code> MW columns. Copies first because
-    add_power_pct_columns writes into the frame it's given."""
-    df = df.copy()
-    df = add_power_pct_columns(df)
-    flag_out_of_range(df, battery_capacity_MW)
-    return df
+    """Extracted power (MW) -> analysis-ready: readings clipped to rated
+    capacity, plus a <code>_power_pct column per battery alongside the bare
+    <code> MW columns. Clipping runs first so the pct columns are derived
+    from the clipped values; it copies, so add_power_pct_columns writing into
+    the frame it's given doesn't touch the caller's."""
+    df = clean_power_overshoot_df(df)
+    return add_power_pct_columns(df)
