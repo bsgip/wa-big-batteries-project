@@ -22,7 +22,7 @@ from pathlib import Path
 import ijson
 import pandas as pd
 
-from tools.constants import CASE_INPUT_DATASET, battery_codes
+from tools.constants import CASE_INPUT_DATASET, esr_codes
 from tools.paths import raw_dataset_dir
 from data_extraction.download import log_and_record_parse_failures
 
@@ -41,7 +41,7 @@ def _extract_charge_level(item: dict) -> list[dict]:
         if "." not in tag:
             continue
         code, field = tag.rsplit(".", 1)
-        if code in battery_codes and field == "chargeLevel":
+        if code in esr_codes and field == "chargeLevel":
             rows.append({"dispatch_interval": dispatch_interval, "code": code, "value": scada["value"]})
     return rows
 
@@ -75,7 +75,7 @@ def _extract_bidstack(item: dict) -> list[dict]:
     rows = []
     for facility in item["markets"]["energy"]["facilities"]:
         code = facility.get("facilityCode")
-        if code not in battery_codes:
+        if code not in esr_codes:
             continue
         submission_id = facility.get("submissionId")
         for tranche in facility["tranches"]:

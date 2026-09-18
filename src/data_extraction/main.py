@@ -27,7 +27,7 @@ def main():
     # Fields from one corpus are grouped into a SINGLE walk, so ask for
     # everything you want from a source in one call rather than one at a time.
 
-    # extract(["soc", "demand", "bidstack"])   # one caseInputData walk (~1,056 files, ~70GB)
+    extract(["soc", "bidstack"], refresh=True)   # one caseInputData walk (~1,056 files, ~70GB)
     # extract(["price", "power"])              # one dispatchSolution walk (~300k files, ~45min)
 
     # Explore a field on a couple of days first (dispatchSolution only).
