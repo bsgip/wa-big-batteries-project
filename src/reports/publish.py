@@ -23,10 +23,11 @@ from pathlib import Path
 import nbformat
 from nbconvert import HTMLExporter
 
-from tools.paths import repo_docs_dir
+from tools.paths import local_docs_dir
 
-DEFAULT_NOTEBOOK = Path(__file__).parent / "report-v2.ipynb"
-DEFAULT_OUTPUT = repo_docs_dir / "index.html"
+report_version = 3
+DEFAULT_NOTEBOOK = Path(__file__).parent / f"report-v{report_version}.ipynb"
+DEFAULT_OUTPUT = local_docs_dir / "index.html"
 
 _MIME_TYPES = {
     ".png": "image/png",
