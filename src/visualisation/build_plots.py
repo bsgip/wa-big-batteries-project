@@ -14,12 +14,18 @@ import logging
 import pandas as pd
 
 from data_extraction.catalog import load
+from data_processing.demand import DEMAND_COLUMN, clean_demand
 from data_processing.store import load_clean
 from tools.constants import battery_codes
 from visualisation.plot_distributions import plot_distribution_grid
 from visualisation.plot_heatmap import plot_heatmap_grid
 from visualisation.plot_soc import plot_event_day_summaries
-from visualisation.plot_time_of_day import plot_soc_timeofday_box_grid, plot_soc_timeofday_fan_grid
+from visualisation.plot_time_of_day import (
+    plot_soc_timeofday_box_grid,
+    plot_soc_timeofday_fan_grid,
+    plot_timeofday_box_grid,
+    plot_timeofday_fan_grid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +85,21 @@ def build_plots(soc_df: pd.DataFrame, power_df: pd.DataFrame, demand: pd.Series,
         vmax=soc_df[battery_codes].max().max(),
     )
     _try(
-        "SOC time-of-day fan grid (past year)",
+        "SOC time-of-day fan grid",
         plot_soc_timeofday_fan_grid,
         soc_df,
         "_soc_pct",
         "SOC (%)",
-        "Battery SOC by time of day — past year",
+        "Battery SOC by time of day — full history",
         "soc_timeofday_fan_grid.png",
     )
     _try(
-        "SOC time-of-day box grid (past year)",
+        "SOC time-of-day box grid",
         plot_soc_timeofday_box_grid,
         soc_df,
         "_soc_pct",
         "SOC (%)",
-        "Battery SOC by time of day — past year",
+        "Battery SOC by time of day — full history",
         "soc_timeofday_box_grid.png",
     )
     _try(
@@ -117,6 +123,35 @@ def build_plots(soc_df: pd.DataFrame, power_df: pd.DataFrame, demand: pd.Series,
         title="Battery power heatmap — entire timeframe",
         filename="timeframe_power_heatmap_grid.png",
     )
+    _try(
+        "power time-of-day box grid",
+        plot_soc_timeofday_box_grid,
+        power_df,
+        "_power_pct",
+        "Power (% of rated, + discharge / - charge)",
+        "Battery power by time of day — full history",
+        "power_timeofday_box_grid.png",
+        signed_colors=True,
+    )
+    # demand is one system-wide series, so it's a single-panel grid rather
+    # than the per-battery ones above
+    demand_panel = [("System demand", clean_demand(demand))]
+    _try(
+        "demand time-of-day fan grid",
+        plot_timeofday_fan_grid,
+        demand_panel,
+        "Demand (MW)",
+        "System demand by time of day — entire timeframe",
+        "demand_timeofday_fan_grid.png",
+    )
+    _try(
+        "demand time-of-day box grid",
+        plot_timeofday_box_grid,
+        demand_panel,
+        "Demand (MW)",
+        "System demand by time of day — entire timeframe",
+        "demand_timeofday_box_grid.png",
+    )
     _try("event-day summaries", plot_event_day_summaries, soc_df, power_df, demand, price)
 
 
@@ -124,7 +159,7 @@ def main():
     build_plots(
         soc_df=load_clean("soc"),
         power_df=load_clean("power"),
-        demand=load("demand")["dispatchCondition.demand"],
+        demand=load("demand")[DEMAND_COLUMN],
         price=load("price")["energy_price"],
     )
 

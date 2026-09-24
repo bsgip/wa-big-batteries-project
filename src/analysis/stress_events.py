@@ -14,7 +14,7 @@ from data_extraction.catalog import load
 from data_processing.store import load_clean
 from tools.constants import battery_codes, system_stress_events
 from tools.io import save_df_to_csv
-from tools.paths import repo_processed_data_dir
+from tools.paths import local_processed_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def main():
         demand=load("demand")["dispatchCondition.demand"],
         price=load("price")["energy_price"],
     )
-    save_df_to_csv(df, repo_processed_data_dir / "stress_event_data.csv")
+    save_df_to_csv(df, local_processed_data_dir / "stress_event_data.csv")
 
 
 if __name__ == "__main__":

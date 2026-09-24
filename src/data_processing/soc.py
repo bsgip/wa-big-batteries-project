@@ -10,7 +10,7 @@ import logging
 
 import pandas as pd
 
-from tools.constants import battery_capacity_MWh, battery_codes
+from tools.constants import battery_capacity_MWh, esr_codes
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def clean_charge_level_overshoot_df(
     capacity = capacity if capacity is not None else battery_capacity_MWh
     df = df.copy()
 
-    for code in battery_codes:
+    for code in esr_codes:
         if code not in df:
             continue
         rated = capacity[code]
@@ -76,7 +76,7 @@ def mask_sustained_zero_runs(df: pd.DataFrame, min_run_minutes: int = 60) -> pd.
     interval_minutes = df.index.to_series().diff().median().total_seconds() / 60
     min_run_length = max(1, round(min_run_minutes / interval_minutes))
 
-    for code in battery_codes:
+    for code in esr_codes:
         if code not in df:
             continue
         is_zero = df[code] == 0
@@ -97,7 +97,7 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
     default, or an empirically-derived one (see derive_capacity_from_observed_max)
     if the caller passes one."""
     capacity = capacity if capacity is not None else battery_capacity_MWh
-    for code in battery_codes:
+    for code in esr_codes:
         if code not in df:
             logger.warning(f"{code}: no SOC column found, skipping soc_pct")
             continue
@@ -107,7 +107,7 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
 
 
 def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
-    """Add fleet-wide aggregates across the battery_codes columns:
+    """Add fleet-wide aggregates across the esr_codes columns:
 
     - fleet_capacity_MWh  rated capacity of the commissioned fleet
     - fleet_soc_MWh       stored energy summed over the batteries reporting
@@ -127,20 +127,27 @@ def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = 
     how charged the reporting batteries are; 3-12% of each battery's
     post-commissioning readings are missing, so the dips are frequent.
 
-    Rows before any battery reports get NaN (not 0) throughout.
+    That only holds while *something* is reporting, though. A row where no
+    battery reports at all is no observation rather than an empty fleet, so
+    fleet_soc_MWh and fleet_soc_pct are NaN there (min_count=1) instead of 0
+    - otherwise the 2023-24 record, when KWINANA_ESR1 was the only battery
+    and any gap in it blacked out the whole fleet, reads as ~25k intervals of
+    a stone-dead fleet. fleet_capacity_MWh keeps its latched value through
+    those rows: the batteries still exist, they just aren't being seen.
     """
     rated = battery_capacity_MWh if capacity is None else capacity
-    codes_present = [code for code in battery_codes if code in df]
+    codes_present = [code for code in esr_codes if code in df]
     if not codes_present:
         logger.warning("no battery SOC columns found, skipping fleet columns")
         return df
 
     reporting = df[codes_present].notna()
     commissioned = reporting.cummax()  # latches True from each battery's first reading
-    live = commissioned.any(axis=1)
 
-    df["fleet_capacity_MWh"] = commissioned.mul([rated[code] for code in codes_present]).sum(axis=1).where(live)
-    df["fleet_soc_MWh"] = df[codes_present].sum(axis=1).where(live)
+    df["fleet_capacity_MWh"] = (
+        commissioned.mul([rated[code] for code in codes_present]).sum(axis=1).where(commissioned.any(axis=1))
+    )
+    df["fleet_soc_MWh"] = df[codes_present].sum(axis=1, min_count=1)
     df["fleet_soc_pct"] = df["fleet_soc_MWh"] / df["fleet_capacity_MWh"] * 100
 
     return df
@@ -154,6 +161,6 @@ def process(df: pd.DataFrame) -> pd.DataFrame:
     df = clean_charge_level_sentinel_df(df)
     df = clean_charge_level_overshoot_df(df)
     df = mask_sustained_zero_runs(df)
-    df = add_fleet_soc_columns(df)
+    df = add_soc_pct_columns(df)
 
-    return add_soc_pct_columns(df)
+    return add_fleet_soc_columns(df)

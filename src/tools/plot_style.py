@@ -2,7 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from tools.constants import battery_codes
+from tools.constants import esr_codes
 
 # sign convention (AEMO): discharge/generation positive, charge negative.
 # colour convention: warm/red = discharge, cool/blue = charge - used wherever
@@ -15,7 +15,7 @@ SEQUENTIAL_CMAP = "viridis"  # unsigned 0-100% (SOC)
 # one stable colour per battery, reused across every plot type so a given
 # battery is always the same colour regardless of which figure it's in
 _TAB10 = plt.get_cmap("tab10").colors
-BATTERY_COLORS = {code: _TAB10[i % len(_TAB10)] for i, code in enumerate(battery_codes)}
+BATTERY_COLORS = {code: _TAB10[i % len(_TAB10)] for i, code in enumerate(esr_codes)}
 
 # separate fixed palette for visualisation/plotting.py's per-unit lines,
 # keyed to unit name so filtering never repaints a series. Deliberately not
@@ -28,6 +28,7 @@ BATTERY_COLORS = {code: _TAB10[i % len(_TAB10)] for i, code in enumerate(battery
 # range, which is where the original palette here was hard to tell apart at
 # thin line widths.
 UNIT_COLORS = {
+    "ALINTA_WGP_ESR1": "#6B8E23",
     "COLLIE_BESS2": "#0072B2",
     "COLLIE_ESR1": "#009E73",
     "COLLIE_ESR4": "#D55E00",

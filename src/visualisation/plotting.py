@@ -19,9 +19,9 @@ from matplotlib import patheffects
 from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
 from data_extraction.catalog import is_extracted, load, load_many
-from data_processing.soc import clean_charge_level_df, derive_capacity_from_observed_max
+from data_processing.soc import clean_charge_level_sentinel_df, derive_capacity_from_observed_max
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_capacity_MW, battery_codes
-from tools.paths import repo_plots_dir
+from tools.paths import local_plots_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 
 _CLEARED_COLOR = "#2a9d5c"
@@ -71,7 +71,7 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
     # _gap_missing_telemetry treats frozen/zero telemetry differently from
     # process()'s mask_sustained_zero_runs, and the figures here were reviewed
     # against this version. Works from the extracted frame, not clean/.
-    soc_df = clean_charge_level_df(data["soc"])
+    soc_df = clean_charge_level_sentinel_df(data["soc"])
     for code in battery_codes:
         if code in soc_df:
             soc_df[code] = _gap_missing_telemetry(soc_df[code], zero_minutes, frozen_minutes)
@@ -226,7 +226,7 @@ def plot_day(day: str, units: list[str] | None = None, soc_unit: str = "mwh"):
     fig.suptitle(f"{day}", y=1.0)
     fig.align_ylabels(list(axes))
     suffix = "_pct" if soc_unit == "pct" else ""
-    save_figure(fig, repo_plots_dir / f"{day}_day{suffix}.png")
+    save_figure(fig, local_plots_dir / f"{day}_day{suffix}.png")
     return fig
 
 
@@ -288,7 +288,7 @@ def plot_day_comparison(day: str, soc_unit: str = "mwh", days_before: int = 7, u
     fig.align_ylabels(left_axes)
 
     suffix = "_pct" if soc_unit == "pct" else ""
-    save_figure(fig, repo_plots_dir / "week-before-comparison" / f"{day}_vs_week_before{suffix}.png")
+    save_figure(fig, local_plots_dir / "week-before-comparison" / f"{day}_vs_week_before{suffix}.png")
     return fig
 
 
@@ -374,7 +374,7 @@ def plot_headroom(day: str, obligation_mw: float | Callable[[str], float] | None
     ax.legend(loc="upper left", fontsize="small")
     _style_axes(ax)
 
-    save_figure(fig, repo_plots_dir / f"{day}_headroom.png")
+    save_figure(fig, local_plots_dir / f"{day}_headroom.png")
     return fig, shortfall, onset_time
 
 
@@ -431,7 +431,7 @@ def plot_entry_energy():
     ax.set_title(f"Fleet entry energy vs obligation — {pct_short:.1f}% of days short")
     _style_axes(ax)
 
-    save_figure(fig, repo_plots_dir / "entry_energy.png")
+    save_figure(fig, local_plots_dir / "entry_energy.png")
     return fig
 
 
@@ -711,7 +711,7 @@ def plot_bidstack_comparison(
     fig.suptitle(f"Bid stack: {day} vs {days_before} days before", y=suptitle_y)
     fig.align_ylabels(list(axes[:, 0]))
 
-    save_figure(fig, repo_plots_dir / "bidstack-comparison" / f"{day}_bidstack_vs_week_before_{color_mode}.png")
+    save_figure(fig, local_plots_dir / "bidstack-comparison" / f"{day}_bidstack_vs_week_before_{color_mode}.png")
     return fig
 
 

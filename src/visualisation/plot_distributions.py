@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from tools.constants import battery_codes
-from tools.paths import repo_plots_dir
+from tools.paths import local_plots_dir
 from tools.plot_style import CHARGE_COLOR, DISCHARGE_COLOR, save_figure
 
 
@@ -20,21 +20,21 @@ def _plot_one_distribution(ax: plt.Axes, values: pd.Series, bicolor: bool):
     if values.empty:
         return
 
-    _, bins, patches = ax.hist(values, bins=60, density=True, color="tab:gray", alpha=0.8)
+    _, bins, patches = ax.hist(values, bins=75, density=True, color="tab:gray", alpha=0.8)
 
     if bicolor:
         for patch, left_edge, right_edge in zip(patches, bins[:-1], bins[1:]):
             bin_center = (left_edge + right_edge) / 2
             patch.set_facecolor(DISCHARGE_COLOR if bin_center >= 0 else CHARGE_COLOR)
+        
+        ax.axvline(0, color="grey", linewidth=0.8, zorder=0)
 
     mu, sigma = values.mean(), values.std()
     if sigma > 0:
         x = np.linspace(values.min(), values.max(), 200)
         pdf = np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
         ax.plot(x, pdf, color="black", linewidth=1.5, label=f"fit: μ={mu:.1f}, σ={sigma:.1f}")
-        ax.legend(fontsize="x-small", loc="upper right")
-
-    ax.axvline(0, color="grey", linewidth=0.8, zorder=0)
+        ax.legend(fontsize="small", loc="upper right")
 
 
 def plot_distribution_grid(
@@ -52,11 +52,11 @@ def plot_distribution_grid(
             _plot_one_distribution(ax, df[col], bicolor)
         ax.set_title(code)
         ax.set_xlabel(xlabel)
-        ax.set_ylabel("density")
+        ax.set_ylabel("Density")
 
     for i in range(len(battery_codes), rows * cols):
         axes[i // cols][i % cols].set_visible(False)
 
     fig.suptitle(title)
     fig.tight_layout()
-    save_figure(fig, repo_plots_dir / filename)
+    save_figure(fig, local_plots_dir / filename)

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_codes, system_stress_events
-from tools.paths import repo_plots_dir
+from tools.paths import local_plots_dir
 from tools.plot_style import BATTERY_COLORS, save_figure
 
 
@@ -40,7 +40,7 @@ def _finish_and_save(fig: plt.Figure, ax: plt.Axes, handles: list, labels: list,
     ax.legend(handles, labels, loc="upper left", fontsize="small", ncols=2)
     fig.autofmt_xdate()
     fig.tight_layout()
-    save_figure(fig, repo_plots_dir / "events" / filename)
+    save_figure(fig, local_plots_dir / "events" / filename)
 
 
 def _plot_metric_demand_price_event(

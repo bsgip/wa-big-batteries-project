@@ -194,7 +194,7 @@ def explore_scada(case_input_path):
                         "value": scada["value"]
                     })
     
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows).pivot(index="dispatch_interval", columns="tag", values="value")
     print(df.head())
 
 

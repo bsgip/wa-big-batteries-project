@@ -37,22 +37,37 @@ battery_codes = [
 ]
 
 
+def codes_in(df, candidates: list[str] | None = None) -> list[str]:
+    """Which known storage units are actually columns of `df`, in the order
+    `candidates` lists them (esr_codes by default).
+
+    Lets the data decide the fleet rather than a hardcoded list, which
+    matters because the two datasets no longer hold the same units:
+    clean/soc.parquet carries ALINTA_WGP_ESR1 (parse_case_input filters on
+    esr_codes) while clean/power.parquet does not (parse_dispatch_solution
+    filters on battery_codes). A caller reading either frame gets the right
+    fleet without knowing which is which, and passing `codes=battery_codes`
+    at the call site still forces the original six."""
+    candidates = candidates if candidates is not None else esr_codes
+    return [code for code in candidates if code in df]
+
+
 # this information is obtained from
-# https://explore.openelectricity.org.au/facilities/wem/?selected=KWINANA_ESR&tech=battery_discharging&status=operating
+# https://explore.openelectricity.org.au/facilities/wem/?tech=battery_discharging&status=operating
 battery_capacity_MWh = {
     "ALINTA_WGP_ESR1": 200,
-    "COLLIE_BESS2": 1300,
-    "COLLIE_ESR1": 800,
+    "COLLIE_BESS2": 1363,
+    "COLLIE_ESR1": 877,
     "COLLIE_ESR4": 1200,
     "COLLIE_ESR5": 1200,
-    "KWINANA_ESR1": 200,
+    "KWINANA_ESR1": 227,
     "KWINANA_ESR2": 900,
 }
 
 battery_capacity_MW = {
     "ALINTA_WGP_ESR1": 100,  # 2hr battery
-    "COLLIE_BESS2": 300,  # ~4hr battery
-    "COLLIE_ESR1": 200,  # ~4hr battery
+    "COLLIE_BESS2": 341,  # ~4hr battery
+    "COLLIE_ESR1": 219,  # ~4hr battery
     "COLLIE_ESR4": 250,  # ~4.5hr battery
     "COLLIE_ESR5": 250,  # ~4.5hr battery
     "KWINANA_ESR1": 100,  # 2hr battery

@@ -6,7 +6,7 @@ import pandas as pd
 from matplotlib.colors import TwoSlopeNorm
 
 from tools.constants import battery_codes
-from tools.paths import repo_plots_dir
+from tools.paths import local_plots_dir
 from tools.plot_style import save_figure
 
 
@@ -80,4 +80,4 @@ def plot_heatmap_grid(
     fig.tight_layout(rect=(0, 0, 0.92, 0.95))
     cbar_ax = fig.add_axes((0.94, 0.15, 0.015, 0.7))
     fig.colorbar(im, cax=cbar_ax, label=colorbar_label)
-    save_figure(fig, repo_plots_dir / filename)
+    save_figure(fig, local_plots_dir / filename)
