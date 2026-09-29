@@ -1,3 +1,4 @@
+from tools.plot_style import save_figure
 from pathlib import Path
 from tools.paths import local_plots_dir, local_data_dir
 from pprint import pprint
@@ -14,24 +15,39 @@ events_filtered_path = sse_dir / "market-advisories-filtered.csv"
 
 
 
-cols = ["Start Interval", "Details", "Interval Duration"]
-df = pd.read_csv(events_filtered_path, parse_dates=True, usecols=cols)
+cols = ["Start Interval", "End Interval", "Details", "Interval Duration"]
+df = pd.read_csv(events_filtered_path, parse_dates=["Start Interval", "End Interval"], usecols=cols)
 
-print(df.head())
+df["duration_td"] = pd.to_timedelta(df["Interval Duration"])
+df["duration_days"] = df["duration_td"].dt.total_seconds() / 86400
+df["start_date"] = df["Start Interval"].dt.date
+df["end_date"] = df["End Interval"].dt.date
+df["start_time"] = df["Start Interval"].dt.time
+df["end_time"] = df["End Interval"].dt.time
 
-def pie_chart():
+keywords = ["temperature", "heatwave", "outage"]
 
-    keywords = ["temperature", "heatwave", "outage"]
+details = df["Details"].fillna("").str.lower()
+matches = pd.DataFrame({k: details.str.contains(k, regex=False) for k in keywords})
+print(matches)
+n_hits = matches.sum(axis=1)
+df["category"] = np.select(
+    [n_hits == 0, n_hits > 1],
+    ["other", "multiple"],
+    default=matches.idxmax(axis=1),
+)
 
-    details = df["Details"].fillna("").str.lower()
-    matches = pd.DataFrame({k: details.str.contains(k, regex=False) for k in keywords})
+df = df[["start_date", "start_time", "end_date", "end_time", "duration_td", "duration_days", "category"]]
+# df.to_csv(local_data_dir / "sse_events.csv")
+print(df.loc[df["duration_days"] > 1].sort_values("duration_td"))
 
-    n_hits = matches.sum(axis=1)
-    df["category"] = np.select(
-        [n_hits == 0, n_hits > 1],
-        ["Other", "Multiple"],
-        default=matches.idxmax(axis=1),     # the single matching keyword
-    )
+
+# for row in df.iterrows():
+#     print(row["duration_days"] < 1)
+
+
+
+def sse_category_pie_chart():
 
     counts = df["category"].value_counts()
 
@@ -47,24 +63,18 @@ def pie_chart():
     ax.legend(
         wedges,
         [f"{c.capitalize()} ({n})" for c, n in counts.items()],
-        title="Details mentions",
+        title="Category",
         loc="center left",
         bbox_to_anchor=(1.0, 0.5),
         frameon=False,
     )
-    ax.set_title(f"Events by keyword (n={len(df)})")
+    ax.set_title(f"SSE Category (n={len(df)})")
     ax.set_aspect("equal")
     fig.tight_layout()
+    save_figure(fig, local_plots_dir / "sse_category_pie_chart.png")
     plt.show()
 
 
-pie_chart()
-
-
-# mask = (df["Details"].str.contains("LRC")) & ~(df["Details"].str.contains("LOR"))
-# df["duration_td"] = pd.to_timedelta(df["Interval Duration"])
-# df["duration_days"] = df["duration_td"].dt.total_seconds() / 86400
-# print(df.loc[df["duration_days"] > 5])
 
 
 def plot_sse_duration():

@@ -13,7 +13,7 @@ Usage:
 import logging
 
 from data_extraction.catalog import load
-from data_processing import power, soc
+from data_processing import power, soc, unconstrained_forecast
 from data_processing.store import save_clean
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 def main():
     save_clean("soc", soc.process(load("soc")))
     save_clean("power", power.process(load("power")))
+
+    # The one field that fans out: one extracted frame in, three clean ones out
+    # (clean/pv.parquet, clean/wind.parquet, clean/other_renewables.parquet).
+    for name, frame in unconstrained_forecast.process(load("unconstrained_forecast")).items():
+        save_clean(name, frame)
 
 
 if __name__ == "__main__":

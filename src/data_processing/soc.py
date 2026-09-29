@@ -10,7 +10,7 @@ import logging
 
 import pandas as pd
 
-from tools.constants import battery_capacity_MWh, esr_codes
+from tools.constants import battery_capacity_MWh, commissioned_capacity, commissioning_dates, esr_codes
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,11 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
     return df
 
 
-def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
+def add_fleet_soc_columns(
+    df: pd.DataFrame,
+    capacity: dict[str, float] | None = None,
+    commissioning: dict[str, pd.Timestamp] | None = None,
+) -> pd.DataFrame:
     """Add fleet-wide aggregates across the esr_codes columns:
 
     - fleet_capacity_MWh  rated capacity of the commissioned fleet
@@ -116,9 +120,15 @@ def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = 
     fleet_capacity_MWh is a monotonic step function, not the constant ~5767
     MWh total: the fleet commissions in stages (KWINANA_ESR1 from 2023-09,
     COLLIE_ESR5 only from 2026-01), so a constant total would show the 2023
-    fleet sitting at a meaningless ~2% SOC. A battery counts from its first
-    non-NaN reading onwards and stays in the total through any later gap -
+    fleet sitting at a meaningless ~2% SOC. A battery counts from its
+    commissioning date onwards and stays in the total through any later gap -
     the battery still exists during an outage.
+
+    `commissioning` is the dict from constants.commissioning_dates. Left at
+    None it comes from this frame alone, which dates a battery from its first
+    chargeLevel reading; pass one built from the power frame too, and the same
+    dates drive the fleet metrics on both datasets (power sees COLLIE_BESS2
+    211 days before SOC does, so the two disagree substantially).
 
     A commissioned battery with no reading therefore contributes its capacity
     but no stored energy, so an outage pulls fleet_soc_pct down - intended,
@@ -141,12 +151,9 @@ def add_fleet_soc_columns(df: pd.DataFrame, capacity: dict[str, float] | None = 
         logger.warning("no battery SOC columns found, skipping fleet columns")
         return df
 
-    reporting = df[codes_present].notna()
-    commissioned = reporting.cummax()  # latches True from each battery's first reading
+    dates = commissioning_dates(df, candidates=codes_present) if commissioning is None else commissioning
 
-    df["fleet_capacity_MWh"] = (
-        commissioned.mul([rated[code] for code in codes_present]).sum(axis=1).where(commissioned.any(axis=1))
-    )
+    df["fleet_capacity_MWh"] = commissioned_capacity(df.index, dates, rated)
     df["fleet_soc_MWh"] = df[codes_present].sum(axis=1, min_count=1)
     df["fleet_soc_pct"] = df["fleet_soc_MWh"] / df["fleet_capacity_MWh"] * 100
 

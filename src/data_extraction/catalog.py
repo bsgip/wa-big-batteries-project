@@ -51,6 +51,12 @@ CATALOG: dict[str, Dataset] = {
     "bidstack": Dataset(
         "bidstack.parquet", "case_input", "bidstack", "battery energy offer tranches, long format"
     ),
+    "unconstrained_forecast": Dataset(
+        "unconstrained_forecast.parquet",
+        "case_input",
+        "unconstrained_forecast",
+        "unconstrained output forecast (signed MW) per intermittent facility, long format",
+    ),
     "power": Dataset(
         "power.parquet", "dispatch_solution", "power", "battery power from initialMw (MW), per battery"
     ),

@@ -96,6 +96,47 @@ def _extract_bidstack(item: dict) -> list[dict]:
     return rows
 
 
+_FORECAST_DIRECTIONS = {
+    # direction -> (JSON key, sign). AEMO publishes both as positive
+    # magnitudes; the sign here is what puts them on one axis - injection to
+    # the grid positive, withdrawal from it negative - so that netting a
+    # facility is a plain sum rather than a subtraction somebody has to
+    # remember to get the right way round.
+    "injection": ("unconstrainedInjectionForecastMw", 1.0),
+    "withdrawal": ("unconstrainedWithdrawalForecastMw", -1.0),
+}
+
+
+def _extract_unconstrained_forecast(item: dict) -> list[dict]:
+    """Per-facility unconstrained (i.e. pre-network-limit) output forecast in
+    MW, off unconstrainedForecast[]. Only intermittent/semi-scheduled
+    facilities appear - wind farms, solar farms and the bioenergy/hydro
+    stragglers - so this is the renewable fleet, not every facility in the
+    market.
+
+    Two rows per facility per interval, one for each direction, signed. Both
+    directions are kept because a hybrid (solar or wind sharing a code with
+    storage, e.g. SBSOLAR1_CUNDERDIN_PV1) can forecast a charge, and dropping
+    that would overstate what the facility puts into the grid."""
+    dispatch_interval = item["dispatchInterval"]
+    rows = []
+    for facility in item["unconstrainedForecast"]:
+        code = facility["facilityCode"]
+        for direction, (key, sign) in _FORECAST_DIRECTIONS.items():
+            magnitude = facility[key]
+            rows.append(
+                {
+                    "dispatch_interval": dispatch_interval,
+                    "code": code,
+                    "direction": direction,
+                    # sign * 0.0 is -0.0 - equal to zero, but it reads as a
+                    # typo, and almost every withdrawal row is zero.
+                    "value_mw": sign * magnitude if magnitude else 0.0,
+                }
+            )
+    return rows
+
+
 # --- per-field finishers: that field's raw row list in, final DataFrame out ---
 
 
@@ -109,6 +150,25 @@ def _finish_wide(index_col: str, columns_col: str, values_col: str = "value"):
         return df
 
     return finish
+
+
+_FORECAST_COLUMNS = ["dispatch_interval", "code", "direction", "value_mw"]
+
+
+def _finish_unconstrained_forecast(rows: list[dict]) -> pd.DataFrame:
+    """Long, not wide - two rows per (dispatch_interval, facility), one per
+    direction, so dispatch_interval is a plain column with duplicates rather
+    than the index.
+
+    Long because the raw field genuinely carries two numbers per facility and
+    extracted/ shouldn't be the place that decides to lose one. Netting them
+    is a decision, so it belongs on the cleaning side
+    (data_processing/unconstrained_forecast.py), which sums the two directions
+    into one value per facility."""
+    df = pd.DataFrame(rows, columns=_FORECAST_COLUMNS)
+    df["dispatch_interval"] = pd.to_datetime(df["dispatch_interval"]).dt.tz_convert("Australia/Perth")
+    df["value_mw"] = df["value_mw"].astype(float)
+    return df.sort_values(["dispatch_interval", "code", "direction"]).reset_index(drop=True)
 
 
 _BIDSTACK_COLUMNS = [
@@ -141,6 +201,7 @@ _FIELDS = {
     "demand": (_extract_demand, _finish_wide("dispatch_interval", "tag")),
     "bidstack": (_extract_bidstack, _finish_bidstack),
     "dispatch_condition": (_extract_dispatch_condition, _finish_wide("dispatch_interval", "tag")),
+    "unconstrained_forecast": (_extract_unconstrained_forecast, _finish_unconstrained_forecast),
 }
 
 # For catalog.py to validate its entries against at import time.

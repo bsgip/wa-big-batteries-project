@@ -9,7 +9,7 @@ import pandas as pd
 
 from tools.constants import DISPATCH_SOLUTION_DATASET, battery_codes
 from tools.utils import search_keyword
-
+from tools.paths import local_data_dir
 
 
 def main():
@@ -27,7 +27,10 @@ def main():
     
     # explore_case_input(case_input_path)
     # explore_forecast(case_input_path)
-    explore_scada(case_input_path)
+    # explore_scada(case_input_path)
+    explore_forecast(case_input_path)
+
+
 
 
 
@@ -166,8 +169,13 @@ def explore_forecast(case_input_path):
                 if tag["facilityCode"] in battery_codes:
                     lst.append(tag)
                     
-        pprint(lst)
         pprint(codes)
+        
+        pv = [tag for tag in codes if "pv" in tag.lower()]
+        wind = [tag for tag in codes if "wf" in tag.lower()]
+        others = [tag for tag in codes if "pv" not in tag.lower() and "wf" not in tag.lower()]
+        
+        print(f"PV: {pv},\nWind: {wind}\nOthers: {others}")
 
 
 

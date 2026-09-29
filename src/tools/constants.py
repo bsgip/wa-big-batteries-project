@@ -1,3 +1,7 @@
+from collections.abc import Mapping
+
+import pandas as pd
+
 ROOT_URL = "https://data.wa.aemo.com.au/public/market-data/wemde/"
 
 # Both caseInputData and every dispatchSolution report-type subfolder share
@@ -50,6 +54,42 @@ def codes_in(df, candidates: list[str] | None = None) -> list[str]:
     at the call site still forces the original six."""
     candidates = candidates if candidates is not None else esr_codes
     return [code for code in candidates if code in df]
+
+
+def commissioning_dates(*frames, candidates: list[str] | None = None) -> dict[str, pd.Timestamp]:
+    """When each unit first came online: its earliest non-NaN reading across
+    every frame given.
+
+    Pass both clean/soc.parquet and clean/power.parquet, because the two
+    datasets disagree about when a unit starts existing - power sees
+    COLLIE_BESS2 211 days before SOC does, COLLIE_ESR4 99 days, COLLIE_ESR5
+    89 days, while KWINANA_ESR1 goes the other way by 2 days. A unit picks up
+    dispatch instructions (dispatchSolution) and publishes chargeLevel
+    telemetry (caseInputData) at different points in its commissioning, so
+    the earliest sighting in either is the honest answer, and deriving it
+    per-frame instead would leave the SOC and power fleet metrics counting
+    different fleets on the same date."""
+    dates: dict[str, pd.Timestamp] = {}
+    for df in frames:
+        for code in codes_in(df, candidates):
+            first = df[code].first_valid_index()
+            if first is not None and (code not in dates or first < dates[code]):
+                dates[code] = first
+    return dates
+
+
+def commissioned_capacity(index, dates: Mapping[str, pd.Timestamp], capacity: Mapping[str, float]) -> pd.Series:
+    """Rated capacity of the commissioned fleet at each point in `index`.
+
+    A monotonic step function: a unit counts from its commissioning date
+    onwards and stays counted through any later outage - the battery still
+    exists while its telemetry is dark. NaN before the first unit exists."""
+    total = pd.Series(0.0, index=index)
+    for code, start in dates.items():
+        if code not in capacity:  # esr_codes carries non-batteries (solar, hydro) with no MWh rating
+            continue
+        total += pd.Series(index >= start, index=index) * capacity[code]
+    return total.where(total > 0)
 
 
 # this information is obtained from
