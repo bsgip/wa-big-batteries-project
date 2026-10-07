@@ -38,6 +38,14 @@ UNIT_COLORS = {
 }
 
 
+SEASON_COLORS = {
+    "Summer": "#E69F00",   # orange
+    "Autumn": "#8C510A",   # brown
+    "Winter": "#0072B2",   # blue
+    "Spring": "#009E73",   # green
+}
+
+
 def save_figure(fig: plt.Figure, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200, bbox_inches="tight")
