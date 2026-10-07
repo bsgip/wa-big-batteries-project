@@ -296,144 +296,6 @@ def _default_obligation_mw() -> float:
     return sum(battery_capacity_MW.values())
 
 
-def plot_headroom(day: str, obligation_mw: float | Callable[[str], float] | None = None):
-    """One panel, MWh: fleet stored energy (solid) vs the energy the fleet
-    needs right now to hold `obligation_mw` through to Peak ESROI's close
-    (dashed, sloping to zero at close, undefined outside the window).
-    `obligation_mw` is a placeholder pending the real ESROD definition -
-    pass a fixed number or a callable(day) -> MW to swap it without
-    touching this figure's code. Returns (fig, shortfall_series, onset_time)
-    so the same run can be aggregated across every day in the record -
-    shortfall_series is NaN outside the window and wherever stored >=
-    required; onset_time is the first clock time within the window where
-    stored < required, or None if the day never fell short."""
-    soc_df, _, _, _ = _load_data()
-    day_soc = _slice_day(soc_df, day)
-    if day_soc is None:
-        print(f"{day}: no SOC data, skipping plot_headroom")
-        return None, pd.Series(dtype=float), None
-
-    tz = day_soc.index.tz
-    if callable(obligation_mw):
-        total_mw = obligation_mw(day)
-    elif obligation_mw is not None:
-        total_mw = obligation_mw
-    else:
-        total_mw = _default_obligation_mw()
-
-    fleet_stored = day_soc[[c for c in battery_codes if c in day_soc]].sum(axis=1, min_count=1)
-
-    window_start = pd.Timestamp(f"{day} {PEAK_ESROI_START}", tz=tz)
-    window_end = pd.Timestamp(f"{day} {PEAK_ESROI_END}", tz=tz)
-    in_window = (fleet_stored.index >= window_start) & (fleet_stored.index <= window_end)
-
-    hours_remaining = (window_end - fleet_stored.index).total_seconds() / 3600
-    required = pd.Series(hours_remaining * total_mw, index=fleet_stored.index)
-    required[~in_window] = float("nan")
-
-    shortfall = (required - fleet_stored).where(in_window)
-    is_short = shortfall > 0
-    onset_time = shortfall.index[is_short].min() if is_short.any() else None
-
-    fig, ax = plt.subplots(figsize=(12, 5.5))
-    ax.plot(fleet_stored.index, fleet_stored, color="black", linewidth=1.3, label="fleet stored energy")
-    ax.plot(required.index, required, color="black", linewidth=1.3, linestyle="--", label="required to hold to close")
-    ax.fill_between(
-        fleet_stored.index,
-        fleet_stored,
-        required,
-        where=is_short.fillna(False),
-        color=_SHORTFALL_FILL,
-        alpha=0.25,
-        label="shortfall",
-        interpolate=True,
-    )
-
-    if onset_time is not None:
-        ax.axvline(onset_time, color=_SHORTFALL_FILL, linestyle=":", linewidth=1.2)
-        # anchor near the actual onset point on the required-energy line,
-        # not the top of the axes - the legend also lives up there, and an
-        # onset near window-open (a common case, since the obligation MW is
-        # still a placeholder - see docstring) would collide with it
-        ax.annotate(
-            f"short from {onset_time.strftime('%H:%M')}",
-            xy=(onset_time, required.loc[onset_time]),
-            xytext=(8, 10),
-            textcoords="offset points",
-            fontsize="small",
-            color=_SHORTFALL_FILL,
-        )
-
-    ax.set_ylim(bottom=0)
-    ax.set_xlim(fleet_stored.index.min(), fleet_stored.index.max())
-    ax.set_ylabel("Energy (MWh)")
-    ax.set_xlabel("Time (AWST)")
-    ax.set_title(f"Fleet headroom vs obligation ({total_mw:.0f} MW to {PEAK_ESROI_END}) — {day}")
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2, tz=tz))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M", tz=tz))
-    ax.legend(loc="upper left", fontsize="small")
-    _style_axes(ax)
-
-    save_figure(fig, local_plots_dir / f"{day}_headroom.png")
-    return fig, shortfall, onset_time
-
-
-def plot_entry_energy():
-    """One dot per day across the full record: fleet stored energy at Peak
-    ESROI's start (17:30), coloured by whether it cleared the obligation
-    that day. The requirement is a dashed step line, not a flat line - it's
-    computed per day from only the units that actually have telemetry that
-    day, so it steps up as each unit commissions instead of assuming the
-    full fleet existed from day one."""
-    soc_df, _, _, _ = _load_data()
-
-    at_start = soc_df.at_time(PEAK_ESROI_START)
-    codes_present = [c for c in battery_codes if c in at_start]
-    fleet_stored = at_start[codes_present].sum(axis=1, min_count=1)
-
-    window_hours = (
-        pd.Timestamp(f"2000-01-01 {PEAK_ESROI_END}") - pd.Timestamp(f"2000-01-01 {PEAK_ESROI_START}")
-    ).total_seconds() / 3600
-
-    daily_active = soc_df[codes_present].notna().resample("D").max()
-    required_mw_by_day = daily_active.apply(
-        lambda row: sum(battery_capacity_MW[c] for c in codes_present if row[c]), axis=1
-    )
-    required_energy = required_mw_by_day.reindex(fleet_stored.index.normalize()) * window_hours
-    required_energy.index = fleet_stored.index
-
-    cleared = fleet_stored >= required_energy
-    pct_short = 100 * (~cleared).sum() / len(cleared) if len(cleared) else 0.0
-
-    fig, ax = plt.subplots(figsize=(13, 5.5))
-    colors = cleared.map({True: _CLEARED_COLOR, False: _SHORT_COLOR})
-    ax.scatter(fleet_stored.index, fleet_stored, c=colors, s=6, linewidths=0, zorder=2)
-    ax.step(
-        required_energy.index,
-        required_energy,
-        where="post",
-        color="black",
-        linestyle="--",
-        linewidth=1,
-        label="requirement",
-        zorder=1,
-    )
-
-    handles = [
-        plt.Line2D([0], [0], marker="o", linestyle="", color=_CLEARED_COLOR, label="cleared obligation"),
-        plt.Line2D([0], [0], marker="o", linestyle="", color=_SHORT_COLOR, label="short of obligation"),
-        plt.Line2D([0], [0], color="black", linestyle="--", label="requirement (steps as units commission)"),
-    ]
-    ax.legend(handles=handles, loc="upper left", fontsize="small")
-
-    ax.set_ylabel(f"Stored energy at {PEAK_ESROI_START} (MWh)")
-    ax.set_xlabel("Date")
-    ax.set_title(f"Fleet entry energy vs obligation — {pct_short:.1f}% of days short")
-    _style_axes(ax)
-
-    save_figure(fig, local_plots_dir / "entry_energy.png")
-    return fig
-
 
 def _load_bidstack() -> pd.DataFrame | None:
     """Read the bidstack dataset if it's been extracted yet, else None with a
@@ -729,9 +591,8 @@ def regenerate_new_plots():
         plot_day_comparison(event["date"], soc_unit="mwh")
         plot_day_comparison(event["date"], soc_unit="pct")
         plot_bidstack_comparison(event["date"])
-        plot_headroom(event["date"])
 
-    plot_entry_energy()
+
 
 
 if __name__ == "__main__":

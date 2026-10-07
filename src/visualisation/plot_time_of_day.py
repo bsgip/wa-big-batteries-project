@@ -111,48 +111,6 @@ def _finish_grid(fig, axes, n_panels: int, title: str, filename: str, extra_hand
     save_figure(fig, local_plots_dir / filename)
 
 
-def plot_timeofday_fan_grid(
-    panels: list[Panel],
-    ylabel: str,
-    title: str,
-    filename: str,
-    lookback_days: int | None = None,
-):
-    """Grid of one time-of-day fan chart per panel: median line with 25-75%,
-    5-95%, and min-max (0-100%) shaded bands, binned to 5-min-of-day
-    resolution across the last `lookback_days` of data (None uses
-    everything)."""
-    rows, cols = _grid_shape(len(panels))
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), squeeze=False)
-
-    quantiles = [0, 0.05, 0.25, 0.5, 0.75, 0.95, 1]
-
-    for ax, (label, series) in zip(axes.flat, panels):
-        ax.axvspan(
-            _PEAK_START_HOUR,
-            _PEAK_END_HOUR,
-            color="gold",
-            alpha=0.2,
-            zorder=0,
-            label=f"Peak ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END})",
-        )
-
-        long_df = _hour_of_day_frame(_lookback_slice(series, lookback_days), by_hour_bin=False)
-        if not long_df.empty:
-            q = long_df.groupby("hour")["value"].quantile(quantiles).unstack()
-            ax.fill_between(q.index, q[0], q[1], color="tab:blue", alpha=0.15, label="min-max")
-            ax.fill_between(q.index, q[0.05], q[0.95], color="tab:blue", alpha=0.20, label="5th-95th percentile")
-            ax.fill_between(q.index, q[0.25], q[0.75], color="tab:blue", alpha=0.35, label="25th-75th percentile")
-            ax.plot(q.index, q[0.5], color="tab:blue", linewidth=1.9, label="median")
-
-        ax.set_title(label)
-        ax.set_xlabel("time of day (hour)")
-        ax.set_ylabel(ylabel)
-        ax.set_xlim(0, 24)
-        ax.set_xticks(range(0, 25, 4))
-
-    _finish_grid(fig, axes, len(panels), title, filename)
-
 
 def plot_timeofday_box_grid(
     panels: list[Panel],
@@ -235,25 +193,12 @@ def plot_timeofday_box_grid(
     legend_keys = None
     if signed_colors:
         legend_keys = [
-            Patch(facecolor=_DISCHARGE_BOX_COLOR, alpha=0.5, label="discharging (injection)"),
-            Patch(facecolor=_CHARGE_BOX_COLOR, alpha=0.5, label="charging (withdrawal)"),
+            Patch(facecolor=DISCHARGE_COLOR, alpha=0.5, label="discharging (injection)"),
+            Patch(facecolor=CHARGE_COLOR, alpha=0.5, label="charging (withdrawal)"),
             Patch(facecolor=_NO_NET_BOX_COLOR, alpha=0.5, label="no net direction (median 0)"),
         ]
 
     _finish_grid(fig, axes, len(panels), title, filename, extra_handles=legend_keys)
-
-
-def plot_soc_timeofday_fan_grid(
-    df: pd.DataFrame,
-    column_suffix: str,
-    ylabel: str,
-    title: str,
-    filename: str,
-    lookback_days: int | None = None,
-):
-    """One fan chart per battery, from the `<code><column_suffix>` columns."""
-    plot_timeofday_fan_grid(battery_panels(df, column_suffix), ylabel, title, filename, lookback_days)
-
 
 def plot_soc_timeofday_box_grid(
     df: pd.DataFrame,
