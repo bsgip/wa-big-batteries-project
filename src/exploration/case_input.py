@@ -175,7 +175,8 @@ def explore_forecast(case_input_path):
         wind = [tag for tag in codes if "wf" in tag.lower()]
         others = [tag for tag in codes if "pv" not in tag.lower() and "wf" not in tag.lower()]
         
-        print(f"PV: {pv},\nWind: {wind}\nOthers: {others}")
+        print(f"PV: {pv},\nWind: {wind}")
+        pprint(others)
 
 
 

@@ -14,7 +14,7 @@ import pandas as pd
 from data_extraction.catalog import load
 from data_processing.demand import DEMAND_COLUMN, clean_demand
 from data_processing.store import load_clean
-from exploration.variables_correlations import plot_soc_vs
+from visualisation.plot_soc_correlations import plot_soc_vs
 from tools.io import save_df_to_csv
 from tools.paths import clean_data_dir
 
