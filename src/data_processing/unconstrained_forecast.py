@@ -1,7 +1,11 @@
 """Turn the long extracted unconstrained forecast into one wide frame per
 generation technology.
 
-Two steps, in this order:
+Three steps, in this order:
+
+    mask_sentinel()     drops the 1000 MW placeholder the go-live corpus
+                        publishes in place of a real withdrawal forecast.
+                        Before netting, or it lands in the net.
 
     net_by_facility()   long -> wide: sums the injection and withdrawal rows
                         into one signed MW value per (interval, facility).
@@ -40,15 +44,59 @@ logger = logging.getLogger(__name__)
 PV_MARKER = "PV"
 WIND_MARKER = "WF"
 
+FORECAST_SENTINEL = 1000.0
+
+
+def mask_sentinel(df: pd.DataFrame) -> pd.DataFrame:
+    """unconstrainedForecast publishes a fixed 1000 MW placeholder instead of
+    a real withdrawal forecast over the WEMDE go-live period - every interval
+    from the start of the corpus (2023-09-26 08:00) through 2023-09-28 08:55,
+    for every facility except ALINTA_WWF, then never again. Treat it as
+    missing rather than a real forecast.
+
+    1000 MW is not a number any facility in this field could produce: the
+    largest injection anywhere in the corpus is ~222 MW, and the biggest
+    registered WEM wind farm is ~214 MW. Nor is it a plausible withdrawal -
+    the only facility that ever genuinely forecasts one is
+    PRDSO_WALPOLE_HG1, at most 0.99 MW, and it isn't in the affected set.
+
+    Matched on the absolute value so the rule holds whichever sign convention
+    the extracted frame carries: extraction signs withdrawal negative, so the
+    sentinel normally arrives as -1000, but a frame extracted before that
+    convention landed carries +1000 and must clean the same way.
+
+    Only the withdrawal row is dropped, not the facility's whole interval -
+    injection over that window is ordinary data (0-203 MW, mean 18), and
+    netting skips the NaN, so those rows come out as injection alone. That is
+    the intended reading: withdrawal is unknown there, but every facility
+    involved forecasts a flat zero withdrawal for the following three years.
+    """
+    sentinel = df["value_mw"].abs() == FORECAST_SENTINEL
+    if not sentinel.any():
+        return df
+
+    affected = df.loc[sentinel]
+    logger.info(
+        f"unconstrained_forecast: masking {sentinel.sum()} sentinel ({FORECAST_SENTINEL:g} MW) rows as missing - "
+        f"{affected['code'].nunique()} facilities, {affected['direction'].unique().tolist()}, "
+        f"{affected['dispatch_interval'].min()} -> {affected['dispatch_interval'].max()}"
+    )
+
+    df = df.copy()
+    df.loc[sentinel, "value_mw"] = float("nan")
+    return df
+
 
 def net_by_facility(df: pd.DataFrame) -> pd.DataFrame:
     """Long extracted forecast -> wide: dispatch_interval index, one column
     per facility, values the net signed MW forecast (injection + withdrawal).
 
-    min_count=1 keeps a facility that has no rows at all for an interval as
-    NaN instead of 0: a farm that isn't commissioned yet is missing, not
+    min_count=1 keeps a facility with no usable rows for an interval as NaN
+    instead of 0: a farm that isn't commissioned yet is missing, not
     forecasting zero output, and the commissioning-date helpers in
-    tools.constants read that distinction off the first non-NaN value."""
+    tools.constants read that distinction off the first non-NaN value. It also
+    means a masked sentinel (see mask_sentinel) nets to the surviving
+    direction rather than dragging the whole interval to NaN."""
     net = df.groupby(["dispatch_interval", "code"])["value_mw"].sum(min_count=1)
     return net.unstack("code")
 
@@ -77,12 +125,14 @@ def classify_columns(df: pd.DataFrame) -> dict[str, list[str]]:
 def process(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Long extracted forecast -> {"pv", "wind", "other_renewables"}, each a
     wide frame on a shared dispatch_interval index holding only that
-    technology's facility columns, in net signed MW.
+    technology's facility columns, in net signed MW, with the go-live
+    sentinel masked out.
 
     Nothing is aggregated across facilities: the per-facility columns are kept
     as they are, so a fleet total is a `.sum(axis=1)` away and a single farm is
     still addressable. NaNs stay NaN for the same reason - summing them away
     here would hide a not-yet-commissioned farm inside a fleet total."""
+    df = mask_sentinel(df)
     wide = net_by_facility(df)
     groups = classify_columns(wide)
 
@@ -95,8 +145,13 @@ def process(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
             logger.warning(f"unconstrained_forecast: no {name} facilities found")
     logger.info(f"unconstrained_forecast: other_renewables = {groups['other_renewables']}")
 
-    withdrawing = df.loc[df["value_mw"] < 0, "code"].unique()
+    # On the direction column, not on the sign: a handful of facilities
+    # forecast a very slightly negative *injection* (-0.002 MW), which is not
+    # the same thing as forecasting a withdrawal.
+    withdrawal_rows = df.loc[df["direction"] == "withdrawal", ["code", "value_mw"]]
+    real = withdrawal_rows["value_mw"].notna() & withdrawal_rows["value_mw"].ne(0)
+    withdrawing = withdrawal_rows.loc[real, "code"].unique()
     if len(withdrawing):
-        logger.info(f"unconstrained_forecast: facilities forecasting withdrawal: {sorted(withdrawing)}")
+        logger.info(f"unconstrained_forecast: facilities forecasting a withdrawal: {sorted(withdrawing)}")
 
     return {name: wide[codes] for name, codes in groups.items()}
