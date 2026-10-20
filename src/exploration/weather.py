@@ -6,7 +6,7 @@ import pandas as pd
 import requests_cache
 from retry_requests import retry
 
-from tools.paths import local_data_dir, clean_data_dir, local_processed_data_dir
+from tools.io import save_clean
 
 
 def get_hourly_temperature():
@@ -59,19 +59,16 @@ def get_hourly_temperature():
 
 	print("\nHourly data\n", hourly_dataframe)
 
-	filename = local_processed_data_dir / "hourly_temperature.csv"
-	hourly_dataframe.to_csv(filename)
+	return hourly_dataframe
 
 
 
-def five_minutely_temperature():
-    filename = local_processed_data_dir / "hourly_temperature.csv"
-    df = pd.read_csv(filename, parse_dates=True, index_col="timestamp")
-    res = df.resample("5min").interpolate("linear")
-    
-    saved_filename = local_processed_data_dir / "5min_temperature.csv"
-    res.to_csv(saved_filename)
-    
+def five_minutely_temperature(hourly):
+    """Interpolate hourly temperature to 5-min and save it as clean/5min_temperature.parquet."""
+    res = hourly.resample("5min").interpolate("linear")
+    save_clean("5min_temperature", res)
 
-get_hourly_temperature()
-five_minutely_temperature()
+
+if __name__ == "__main__":
+    hourly = get_hourly_temperature()
+    five_minutely_temperature(hourly)

@@ -25,10 +25,10 @@ def main():
     dispatch_data_path = data_dir / "ReferenceDispatchSolution_202608140800.json"
     predispatch_data_path = data_dir / "ReferencePre-DispatchSolution_202608171100.json"
     
-    # explore_case_input(case_input_path)
+    explore_case_input(case_input_path)
     # explore_forecast(case_input_path)
     # explore_scada(case_input_path)
-    explore_forecast(case_input_path)
+    # explore_forecast(case_input_path)
 
 
 
@@ -104,14 +104,16 @@ def save_df(rows, data_dir):
 def explore_case_input(case_input_path):
     rows = []
     with open(case_input_path, "rb") as f:
-        case_data = ijson.items(f, "data.caseData.item", use_float=True)
+        case_data = ijson.items(f, "data.caseData.item.marketServicesPriceFlag", use_float=True)
         tag_set = set()
         
         data = next(case_data)
         
-        pprint(list(data.keys()))
+        print(data)
         
+
         for field in data:
+            break
             item = data[field]
 
             print(f"\n--- Fieldname: {field} ---")

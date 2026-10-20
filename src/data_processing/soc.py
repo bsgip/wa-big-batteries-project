@@ -10,7 +10,13 @@ import logging
 
 import pandas as pd
 
-from tools.constants import battery_capacity_MWh, commissioned_capacity, commissioning_dates, esr_codes
+from tools.constants import (
+    battery_capacity_MWh,
+    battery_codes,
+    commissioned_capacity,
+    commissioning_dates,
+    esr_codes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,48 +116,27 @@ def add_fleet_soc_columns(
     df: pd.DataFrame,
     capacity: dict[str, float] | None = None,
     commissioning: dict[str, pd.Timestamp] | None = None,
+    codes: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Add fleet-wide aggregates across the esr_codes columns:
+    """Add fleet_capacity_MWh, fleet_soc_MWh and fleet_soc_pct over the fleet's batteries.
 
-    - fleet_capacity_MWh  rated capacity of the commissioned fleet
-    - fleet_soc_MWh       stored energy summed over the batteries reporting
-    - fleet_soc_pct       the second as a percentage of the first
+    codes: batteries in the fleet (default: battery_codes, i.e. without ALINTA_WGP_ESR1,
+        so the fleet matches the power data)
+    commissioning: from constants.commissioning_dates (default: from this frame)
 
-    fleet_capacity_MWh is a monotonic step function, not the constant ~5767
-    MWh total: the fleet commissions in stages (KWINANA_ESR1 from 2023-09,
-    COLLIE_ESR5 only from 2026-01), so a constant total would show the 2023
-    fleet sitting at a meaningless ~2% SOC. A battery counts from its
-    commissioning date onwards and stays in the total through any later gap -
-    the battery still exists during an outage.
-
-    `commissioning` is the dict from constants.commissioning_dates. Left at
-    None it comes from this frame alone, which dates a battery from its first
-    chargeLevel reading; pass one built from the power frame too, and the same
-    dates drive the fleet metrics on both datasets (power sees COLLIE_BESS2
-    211 days before SOC does, so the two disagree substantially).
-
-    A commissioned battery with no reading therefore contributes its capacity
-    but no stored energy, so an outage pulls fleet_soc_pct down - intended,
-    since unavailable energy is unavailable to the system whatever the cause.
-    Note this makes fleet_soc_pct a measure of usable fleet energy, not of
-    how charged the reporting batteries are; 3-12% of each battery's
-    post-commissioning readings are missing, so the dips are frequent.
-
-    That only holds while *something* is reporting, though. A row where no
-    battery reports at all is no observation rather than an empty fleet, so
-    fleet_soc_MWh and fleet_soc_pct are NaN there (min_count=1) instead of 0
-    - otherwise the 2023-24 record, when KWINANA_ESR1 was the only battery
-    and any gap in it blacked out the whole fleet, reads as ~25k intervals of
-    a stone-dead fleet. fleet_capacity_MWh keeps its latched value through
-    those rows: the batteries still exist, they just aren't being seen.
+    A battery counts toward capacity from its commissioning date, also while it isn't reporting,
+    so an outage pulls fleet_soc_pct down. Rows where no battery reports are NaN, not 0.
     """
     rated = battery_capacity_MWh if capacity is None else capacity
-    codes_present = [code for code in esr_codes if code in df]
+    fleet = battery_codes if codes is None else codes
+    codes_present = [code for code in fleet if code in df]
     if not codes_present:
         logger.warning("no battery SOC columns found, skipping fleet columns")
         return df
 
-    dates = commissioning_dates(df, candidates=codes_present) if commissioning is None else commissioning
+    if commissioning is None:
+        commissioning = commissioning_dates(df, candidates=codes_present)
+    dates = {code: commissioning[code] for code in codes_present if code in commissioning}
 
     df["fleet_capacity_MWh"] = commissioned_capacity(df.index, dates, rated)
     df["fleet_soc_MWh"] = df[codes_present].sum(axis=1, min_count=1)

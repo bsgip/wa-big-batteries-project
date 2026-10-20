@@ -25,7 +25,7 @@ import pandas as pd
 
 from tools.io import save_df_to_parquet
 from tools.paths import extracted_data_dir
-from data_extraction import parse_case_input, parse_dispatch_solution
+from data_extraction import parse_case_input, parse_dispatch_solution, parse_rcoq
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,11 @@ CATALOG: dict[str, Dataset] = {
     "soc": Dataset(
         "soc.parquet", "case_input", "charge_level", "battery state of charge (MWh), per battery"
     ),
-    "demand": Dataset(
-        "demand.parquet", "case_input", "demand", "system demand / DPV SCADA tags (MW)"
+    "dispatch_condition": Dataset(
+        "dispatch_condition.parquet",
+        "case_input",
+        "dispatch_condition",
+        "system-wide dispatchCondition SCADA tags: demand, dpv, underlyingDemand, ... (MW)",
     ),
     "bidstack": Dataset(
         "bidstack.parquet", "case_input", "bidstack", "battery energy offer tranches, long format"
@@ -59,6 +62,12 @@ CATALOG: dict[str, Dataset] = {
     ),
     "power": Dataset(
         "power.parquet", "dispatch_solution", "power", "battery power from initialMw (MW), per battery"
+    ),
+    "rcoq": Dataset(
+        "rcoq.parquet",
+        "rcoq_files",
+        "rcoq",
+        "reserve capacity obligation quantity (MW) per facility, 5-min, from the AEMO CSVs in data/rcoq/",
     ),
     "price": Dataset(
         "price.parquet", "dispatch_solution", "price", "energy market clearing price ($/MWh)"
@@ -78,14 +87,20 @@ def _build_dispatch_solution(fields: list[str], dates: list[str] | None, max_wor
     )
 
 
+def _build_rcoq(fields: list[str], dates: list[str] | None, max_workers: int):
+    return parse_rcoq.build_rcoq_data()
+
+
 _BUILDERS = {
     "case_input": _build_case_input,
     "dispatch_solution": _build_dispatch_solution,
+    "rcoq_files": _build_rcoq,
 }
 
 _FIELD_NAMES = {
     "case_input": parse_case_input.FIELD_NAMES,
     "dispatch_solution": parse_dispatch_solution.FIELD_NAMES,
+    "rcoq_files": parse_rcoq.FIELD_NAMES,
 }
 
 

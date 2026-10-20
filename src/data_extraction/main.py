@@ -27,8 +27,9 @@ def main():
     # Fields from one corpus are grouped into a SINGLE walk, so ask for
     # everything you want from a source in one call rather than one at a time.
 
-    extract(["soc", "bidstack"], refresh=True)   # one caseInputData walk (~1,056 files, ~70GB)
-    # extract(["price", "power"])              # one dispatchSolution walk (~300k files, ~45min)
+    # extract(["soc", "bidstack"], refresh=True)  # one caseInputData walk (~1,056 files, ~70GB)
+    # extract(["price", "power"])  # one dispatchSolution walk (~300k files, ~45min)
+    # extract(["rcoq"])  # reads the monthly AEMO CSVs in data/rcoq/ (seconds, no corpus walk)
 
     # Explore a field on a couple of days first (dispatchSolution only).
     # Returns the frames for inspection without writing partial data to disk:
@@ -40,7 +41,7 @@ def main():
 
     # Registered in parse_case_input._FIELDS but never extracted, so asking
     # for it means a full caseInputData walk:
-    # extract(["dispatch_condition"])   # needs a CATALOG entry first
+    # extract(["dispatch_condition"])  # needs a CATALOG entry first
 
 
 if __name__ == "__main__":
