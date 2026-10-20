@@ -34,6 +34,8 @@ local_data_dir = PROJECT_ROOT / "data"
 local_processed_data_dir = local_data_dir / "processed_data"
 local_plots_dir = local_data_dir / "plots"
 local_docs_dir = PROJECT_ROOT / "docs"
+registration_dir = local_data_dir / "registration"  # AEMO facility registration lists
+rcoq_dir = local_data_dir / "rcoq"  # AEMO Reserve Capacity Obligation Quantity files, one per month
 
 # The two pipeline stages, kept in separate folders so it's always obvious
 # which is which: extracted/ holds literally what came out of the raw JSON and

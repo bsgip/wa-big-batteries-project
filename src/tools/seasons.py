@@ -20,3 +20,13 @@ def season_of(index):
 def season_year_of(index):
     """Year each timestamp's season belongs to; December counts toward the next year's summer."""
     return pd.Index(index.year + (index.month == 12), name="season_year")
+
+
+# Three-way grouping: autumn and spring together as the shoulder seasons
+SEASON_GROUPS = ["Summer", "Shoulder", "Winter"]
+SEASON_GROUP_BY_SEASON = {"Summer": "Summer", "Autumn": "Shoulder", "Winter": "Winter", "Spring": "Shoulder"}
+
+
+def season_group_of(index):
+    """Summer / Shoulder / Winter for each timestamp in index (autumn and spring are shoulder)."""
+    return pd.Index(season_of(index).map(SEASON_GROUP_BY_SEASON), name="season_group")

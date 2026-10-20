@@ -42,33 +42,16 @@ battery_codes = [
 
 
 def codes_in(df, candidates: list[str] | None = None) -> list[str]:
-    """Which known storage units are actually columns of `df`, in the order
-    `candidates` lists them (esr_codes by default).
-
-    Lets the data decide the fleet rather than a hardcoded list, which
-    matters because the two datasets no longer hold the same units:
-    clean/soc.parquet carries ALINTA_WGP_ESR1 (parse_case_input filters on
-    esr_codes) while clean/power.parquet does not (parse_dispatch_solution
-    filters on battery_codes). A caller reading either frame gets the right
-    fleet without knowing which is which, and passing `codes=battery_codes`
-    at the call site still forces the original six."""
+    """Codes from candidates (default esr_codes) that are columns of df, in candidates' order."""
     candidates = candidates if candidates is not None else esr_codes
     return [code for code in candidates if code in df]
 
 
 def commissioning_dates(*frames, candidates: list[str] | None = None) -> dict[str, pd.Timestamp]:
-    """When each unit first came online: its earliest non-NaN reading across
-    every frame given.
+    """{code: first non-NaN timestamp} for each unit, earliest across all frames given.
 
-    Pass both clean/soc.parquet and clean/power.parquet, because the two
-    datasets disagree about when a unit starts existing - power sees
-    COLLIE_BESS2 211 days before SOC does, COLLIE_ESR4 99 days, COLLIE_ESR5
-    89 days, while KWINANA_ESR1 goes the other way by 2 days. A unit picks up
-    dispatch instructions (dispatchSolution) and publishes chargeLevel
-    telemetry (caseInputData) at different points in its commissioning, so
-    the earliest sighting in either is the honest answer, and deriving it
-    per-frame instead would leave the SOC and power fleet metrics counting
-    different fleets on the same date."""
+    Pass soc and power together: they first see some units on different dates.
+    """
     dates: dict[str, pd.Timestamp] = {}
     for df in frames:
         for code in codes_in(df, candidates):
@@ -79,11 +62,7 @@ def commissioning_dates(*frames, candidates: list[str] | None = None) -> dict[st
 
 
 def commissioned_capacity(index, dates: Mapping[str, pd.Timestamp], capacity: Mapping[str, float]) -> pd.Series:
-    """Rated capacity of the commissioned fleet at each point in `index`.
-
-    A monotonic step function: a unit counts from its commissioning date
-    onwards and stays counted through any later outage - the battery still
-    exists while its telemetry is dark. NaN before the first unit exists."""
+    """Total rated capacity of units commissioned by each timestamp in index (NaN before the first)."""
     total = pd.Series(0.0, index=index)
     for code, start in dates.items():
         if code not in capacity:  # esr_codes carries non-batteries (solar, hydro) with no MWh rating
@@ -119,6 +98,9 @@ battery_capacity_MW = {
 # replacing the old per-event start/end times below
 PEAK_ESROI_START = "17:30"
 PEAK_ESROI_END = "21:30"
+
+# Due to a long outage in 2024, data analysis will start in December 2024
+START_DATE = "2024-12-01"
 
 system_stress_events = [
     {"date": "2024-12-10", "event_start_time": "15:00", "event_end_time": "20:30", "highest_stress_time": "18:35"},
