@@ -13,11 +13,11 @@ from tools.seasons import SEASON_BY_MONTH
 # one colour per SSE category, kept away from the blue/orange the band
 # already uses so an event stripe never reads as part of the data
 SSE_CATEGORY_COLORS = {
-    "heatwave":    "#D7191C",   # red
-    "temperature": "#00A6A6",   # teal
-    "outage":      "#1A1A1A",   # near-black
-    "multiple":    "#7D3AC1",   # violet
-    "other":       "#4CAF50",   # green
+    "heatwave": "#D7191C",  # red
+    "temperature": "#00A6A6",  # teal
+    "outage": "#1A1A1A",  # near-black
+    "multiple": "#7D3AC1",  # violet
+    "other": "#4CAF50",  # green
 }
 
 
@@ -35,7 +35,7 @@ def _draw_sse_events(ax, events, xlim):
 
     drawn = set()
     for _, e in events.iterrows():
-        if e["end"] < lo or e["start"] > hi:   # outside the plotted window
+        if e["end"] < lo or e["start"] > hi:  # outside the plotted window
             continue
         color = SSE_CATEGORY_COLORS.get(e["category"], "#333333")
         if (e["end"] - e["start"]) >= pd.Timedelta(days=1):
@@ -153,22 +153,30 @@ def _format_season_axis(ax):
     ax.xaxis.set_minor_locator(mdates.MonthLocator())
 
 
+def _title_and_legend_above(ax, title):
+    """Set the title and put the legend in one row between the title and the plot, so it never covers data."""
+    n_entries = len(ax.get_legend_handles_labels()[0])
+    legend = ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=n_entries, fontsize=8.5, frameon=False)
+    ax.set_title(title, pad=26)  # room for the legend row
+    return legend
+
+
 def trend_band_plot(df, col=None, date_col=None, period='month', show_mean=True,
                     show_outliers=True, show_sse=True, ylabel=None, title=None,
                     filename=None):
     """
     Median line with a shaded p10-p90 band, per month or per season.
 
-    df            : DataFrame or Series with daily values
-    col           : name of the value column (defaults to the only/first numeric column)
-    date_col      : name of the date column, if dates aren't already the index
-    period        : 'month' or 'season' - how days are grouped
-    show_mean     : also draw the period mean as a dashed line
-    show_outliers : scatter the days falling outside that period's 1.5xIQR fences
-    show_sse      : shade SSE events from data/sse_events.csv, coloured by category
-    ylabel        : y-axis label (defaults to the column name)
-    title         : plot title (defaults to "<column>: <period> median with spread")
-    filename      : plot filename (defaults to "<column>_<period>_trend.png")
+    df: DataFrame or Series with daily values
+    col: name of the value column (defaults to the only/first numeric column)
+    date_col: name of the date column, if dates aren't already the index
+    period: 'month' or 'season' - how days are grouped
+    show_mean: also draw the period mean as a dashed line
+    show_outliers: scatter the days falling outside that period's 1.5xIQR fences
+    show_sse: shade SSE events from data/sse_events.csv, coloured by category
+    ylabel: y-axis label (defaults to the column name)
+    title: plot title (defaults to "<column>: <period> median with spread")
+    filename: plot filename (defaults to "<column>_<period>_trend.png")
     """
     if period not in _PERIOD_SPECS:
         raise ValueError(f"period must be one of {list(_PERIOD_SPECS)}, got {period!r}")
@@ -194,11 +202,10 @@ def trend_band_plot(df, col=None, date_col=None, period='month', show_mean=True,
     _format_season_axis(ax)
 
     ax.set_ylabel(ylabel or s.name)
-    ax.set_title(title or f'{s.name}: {unit.lower()} median with spread')
     ax.grid(alpha=0.3)
 
-    # two legends: the series on the plot, the event categories outside it
-    main_legend = ax.legend(loc='best', fontsize=9)
+    # two legends: the series above the plot, the event categories to its right
+    main_legend = _title_and_legend_above(ax, title or f'{s.name}: {unit.lower()} median with spread')
     if sse_handles:
         ax.add_artist(main_legend)
         ax.legend(handles=sse_handles, title='SSE category', fontsize=9,
@@ -236,7 +243,7 @@ def _merge_events(events, long=pd.Timedelta(days=1)):
         for _, e in grp.iterrows():
             if start is None:
                 start, end = e['start'], e['end']
-            elif e['start'] <= end:              # overlaps the run so far
+            elif e['start'] <= end:  # overlaps the run so far
                 end = max(end, e['end'])
             else:
                 merged.append((cat, start, end))
@@ -256,9 +263,9 @@ def _draw_event_strip(ax, events, xlim, style='auto', min_span_frac=0.004):
     day) in its lane. Keeps events off the main axes entirely, so density in a
     busy week no longer paints over the data.
 
-    style : 'auto'  - span if the event runs a day or more, tick if not
-            'span'  - always a span, widened to stay visible if very short
-            'line'  - always a tick at the start time
+    style: 'auto' - span if the event runs a day or more, tick if not
+        'span' - always a span, widened to stay visible if very short
+        'line' - always a tick at the start time
     """
     if style not in ('auto', 'span', 'line'):
         raise ValueError(f"style must be 'auto', 'span' or 'line', got {style!r}")
@@ -300,7 +307,7 @@ def _draw_event_strip(ax, events, xlim, style='auto', min_span_frac=0.004):
 
     ax.set_yticks(range(len(cats)))
     ax.set_yticklabels([c.capitalize() for c in cats], fontsize=8)
-    ax.set_ylim(len(cats) - 0.5, -0.5)   # first category at the top
+    ax.set_ylim(len(cats) - 0.5, -0.5)  # first category at the top
     ax.tick_params(axis='y', length=0)
     for side in ('top', 'right', 'left'):
         ax.spines[side].set_visible(False)
@@ -318,8 +325,8 @@ def trend_band_event_plot(df, col=None, date_col=None, period='month',
     Same arguments as trend_band_plot, minus show_sse (the strip is the point
     here), plus:
 
-    event_style  : 'auto' (span if a day or longer, tick if not), 'span', 'line'
-    merge_events : collapse overlapping events of the same category into one
+    event_style: 'auto' (span if a day or longer, tick if not), 'span', 'line'
+    merge_events: collapse overlapping events of the same category into one
 
     Returns (fig, (main_ax, event_ax), summary).
     """
@@ -347,9 +354,8 @@ def trend_band_event_plot(df, col=None, date_col=None, period='month',
     _draw_event_strip(ax_ev, events, xlim, style=event_style)
 
     ax.set_ylabel(ylabel or s.name)
-    ax.set_title(title or f'{s.name}: {unit.lower()} median with spread')
     ax.grid(alpha=0.3)
-    ax.legend(loc='best', fontsize=9)
+    _title_and_legend_above(ax, title or f'{s.name}: {unit.lower()} median with spread')
 
     ax_ev.set_ylabel("SSE", fontsize=9)
     ax_ev.grid(axis='x', alpha=0.3)

@@ -64,7 +64,7 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
     if _data_cache.get("_key") == cache_key:
         return _data_cache["soc"], _data_cache["power"], _data_cache["demand"], _data_cache["price"]
 
-    data = load_many(["soc", "demand", "power", "price"])
+    data = load_many(["soc", "dispatch_condition", "power", "price"])
     power_df = data["power"]
 
     # Deliberately its own SOC cleaning, not data_processing.soc.process():
@@ -76,7 +76,7 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
         if code in soc_df:
             soc_df[code] = _gap_missing_telemetry(soc_df[code], zero_minutes, frozen_minutes)
 
-    demand = data["demand"]["dispatchCondition.demand"]
+    demand = data["dispatch_condition"]["dispatchCondition.demand"]
     price = data["price"]["energy_price"]
 
     _data_cache.update(_key=cache_key, soc=soc_df, power=power_df, demand=demand, price=price)

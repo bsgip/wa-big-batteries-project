@@ -15,12 +15,13 @@ def _grid_shape(n: int) -> tuple[int, int]:
     return rows, cols
 
 
-def _plot_one_distribution(ax: plt.Axes, values: pd.Series, bicolor: bool):
+def _plot_one_distribution(ax: plt.Axes, values: pd.Series, bicolor: bool, bins=75):
+    """Histogram + normal fit of values on ax. bins: a count, or fixed bin edges to compare plots."""
     values = values.dropna()
     if values.empty:
         return
 
-    _, bins, patches = ax.hist(values, bins=75, density=True, color="tab:gray", alpha=0.8)
+    _, bins, patches = ax.hist(values, bins=bins, density=True, color="tab:gray", alpha=0.8)
 
     if bicolor:
         for patch, left_edge, right_edge in zip(patches, bins[:-1], bins[1:]):

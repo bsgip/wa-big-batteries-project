@@ -19,7 +19,7 @@ def _grid_shape(n: int) -> tuple[int, int]:
 def plot_heatmap_grid(
     df: pd.DataFrame,
     column_suffix: str,
-    cmap: str,
+    cmap,
     center: float | None,
     colorbar_label: str,
     title: str,

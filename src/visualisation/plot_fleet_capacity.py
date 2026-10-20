@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tools.paths import local_plots_dir
-from tools.constants import battery_capacity_MWh, codes_in
+from tools.constants import battery_capacity_MWh, battery_codes, codes_in
 from tools.plot_style import UNIT_COLORS, save_figure
 
 
@@ -15,22 +15,12 @@ def semester_labels(index: pd.DatetimeIndex) -> pd.Index:
 
 
 def fleet_capacity_by_semester(soc_df: pd.DataFrame, codes: list[str] | None = None) -> pd.DataFrame:
-    """soc.parquet's fleet_capacity_MWh split by battery: one row per
-    semester, one column per battery, holding that battery's rated capacity
-    once commissioned and 0 before.
+    """Rated capacity (MWh) per semester, one column per battery (0 before its first reading).
 
-    Capacity is a monotonic step function (see add_fleet_soc_columns) - a
-    battery counts from its first reading onwards and stays counted through
-    later outages - so taking the max within a period gives the fleet as it
-    stood at the end of that semester.
-
-    `codes` defaults to whichever known units are columns of `soc_df`, so
-    the frame decides the fleet: clean/soc.parquet carries Alinta Wagerup
-    and it lands in the stack on its own. Pass `codes=battery_codes` to
-    force the original six instead.
-
-    The per-battery split is rebuilt here rather than read off the single
-    fleet total, so it's checked against that total before being returned."""
+    codes: batteries to include (default: every battery in soc_df, ALINTA_WGP_ESR1 included,
+        since this shows all capacity built so far). Checked against fleet_capacity_MWh
+        when codes is the fleet (battery_codes).
+    """
     periods = semester_labels(soc_df.index)
     codes_present = codes if codes is not None else codes_in(soc_df)
 
@@ -43,7 +33,7 @@ def fleet_capacity_by_semester(soc_df: pd.DataFrame, codes: list[str] | None = N
     # Only meaningful when the split covers the same fleet the stored total
     # does: a deliberately narrowed `codes` is expected to sum to less, so
     # checking it there would fail on correct output.
-    if codes_present == codes_in(soc_df):
+    if codes_present == codes_in(soc_df, battery_codes):
         stored_total = soc_df["fleet_capacity_MWh"].groupby(periods).max().reindex(table.index)
         if not np.allclose(table.sum(axis=1), stored_total):
             raise ValueError(
@@ -62,8 +52,7 @@ def plot_fleet_capacity_evolution(
     """Stacked bars of fleet storage capacity per semester, one segment per
     battery, with the fleet total above each bar.
 
-    `codes` picks the fleet - see fleet_capacity_by_semester. Default is
-    whatever `soc_df` holds, so Alinta Wagerup appears when it's there."""
+    codes: see fleet_capacity_by_semester (default: every battery, ALINTA_WGP_ESR1 included)."""
     table = fleet_capacity_by_semester(soc_df, codes)
 
     fig, ax = plt.subplots(figsize=(10, 6))

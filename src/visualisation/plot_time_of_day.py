@@ -112,93 +112,119 @@ def _finish_grid(fig, axes, n_panels: int, title: str, filename: str, extra_hand
 
 
 
-def plot_timeofday_box_grid(
-    panels: list[Panel],
-    ylabel: str,
-    title: str,
-    filename: str,
+def draw_timeofday_box(
+    ax,
+    series: pd.Series,
     lookback_days: int | None = None,
     whis: float | tuple[float, float] = (5, 95),
     showfliers: bool = True,
     flierprops: dict | None = None,
     signed_colors: bool = False,
 ):
-    """Grid of one time-of-day box plot per panel, one box per hour, over the
-    last `lookback_days` of data (None uses everything).
+    """Draw one box per hour of day for series on ax, with the Peak ESROI window shaded.
 
-    `whis` defaults to the 5th/95th percentiles rather than matplotlib's
-    1.5*IQR. SOC's IQR is wide enough (25-37 points) that the 1.5*IQR fence
-    falls below 0% for most batteries, which lets a single reading out of
-    ~10,000 in an hourly box drag the whisker to zero - the whisker ends up
-    reporting the rarest value in the box rather than its range. Percentile
-    whiskers also match the fan chart's 5-95 band, so the two plots can be
-    read against each other.
+    lookback_days: only use the last N days (None = all data)
+    whis: whisker percentiles (default 5th-95th)
+    showfliers: draw the points outside the whiskers
+    flierprops: override how those points look
+    signed_colors: colour each box red/blue by the sign of its median (for power)
+    """
+    ax.axvspan(
+        _PEAK_START_HOUR,
+        _PEAK_END_HOUR,
+        color="gold",
+        alpha=0.2,
+        zorder=0,
+        label=f"Peak ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END})",
+    )
 
-    Everything outside the whiskers is drawn as a flier, so no reading is
-    left out of the plot. With percentile whiskers that's 10% of every box
-    (~1,200 points per hour), which matplotlib's default 6pt opaque circles
-    would render as a solid black bar - _DENSE_FLIERPROPS shrinks them to
-    near-transparent dots so the tail reads as a density gradient instead.
-    Pass `flierprops` to override.
+    if signed_colors:
+        ax.axhline(0, color="black", lw=0.8, zorder=1)
 
-    `signed_colors` fills each box by the sign of its median instead of one
-    flat blue - for signed quantities like power, where the sign is the
-    whole point (discharge/injection vs charge/withdrawal). It also draws a
-    zero line, since that's the axis the colour splits on."""
+    long_df = _hour_of_day_frame(_lookback_slice(series, lookback_days), by_hour_bin=True)
+    if not long_df.empty:
+        groups = [long_df.loc[long_df["hour"] == h, "value"] for h in range(24)]
+        drawn = ax.boxplot(
+            groups,
+            positions=range(24),
+            widths=0.6,
+            whis=whis,
+            showfliers=showfliers,
+            flierprops=flierprops if flierprops is not None else _DENSE_FLIERPROPS,
+            patch_artist=True,
+            boxprops={"facecolor": "tab:blue", "alpha": 0.5},
+            medianprops={"color": "black"},
+        )
+
+        if signed_colors:
+            for patch, group in zip(drawn["boxes"], groups, strict=True):
+                patch.set_facecolor(_signed_box_color(group.median()))
+
+    ax.set_xlabel("Hour of day")
+    ax.set_xlim(-1, 24)
+    # boxplot() leaves a fixed tick formatter behind, which labels ticks
+    # by their position in the tick list rather than by value - set_xticks
+    # alone would label hours 0,4,8,...,20 as "0,1,2,3,4,5". Passing
+    # labels explicitly replaces that formatter.
+    ax.set_xticks(_BOX_XTICKS, labels=[str(h) for h in _BOX_XTICKS])
+
+
+def _signed_legend_keys(signed_colors: bool) -> list:
+    """Legend entries for the box colours, if signed_colors is on."""
+    if not signed_colors:
+        return []
+    return [
+        Patch(facecolor=DISCHARGE_COLOR, alpha=0.5, label="discharging (injection)"),
+        Patch(facecolor=CHARGE_COLOR, alpha=0.5, label="charging (withdrawal)"),
+        Patch(facecolor=_NO_NET_BOX_COLOR, alpha=0.5, label="no net direction (median 0)"),
+    ]
+
+
+def plot_timeofday_box(
+    series: pd.Series,
+    ylabel: str,
+    title: str,
+    filename: str,
+    legend_loc: str = "upper left",
+    **box_kwargs,
+):
+    """One time-of-day box plot for a single series. box_kwargs go to draw_timeofday_box."""
+    fig, ax = plt.subplots(figsize=(10, 5))
+    draw_timeofday_box(ax, series, **box_kwargs)
+
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+
+    handles = ax.get_legend_handles_labels()[0] + _signed_legend_keys(box_kwargs.get("signed_colors", False))
+    ax.legend(handles=handles, loc=legend_loc, fontsize="small")
+
+    fig.tight_layout()
+    save_figure(fig, local_plots_dir / filename)
+
+
+def plot_timeofday_box_grid(
+    panels: list[Panel],
+    ylabel: str,
+    title: str,
+    filename: str,
+    **box_kwargs,
+):
+    """Grid of time-of-day box plots, one panel per (panel title, series) pair.
+
+    panels: e.g. [("System demand", demand), ("Price", price)]
+    box_kwargs: passed to draw_timeofday_box (lookback_days, signed_colors, ...)
+    """
     rows, cols = _grid_shape(len(panels))
     fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), squeeze=False)
 
     for ax, (label, series) in zip(axes.flat, panels):
-        ax.axvspan(
-            _PEAK_START_HOUR,
-            _PEAK_END_HOUR,
-            color="gold",
-            alpha=0.2,
-            zorder=0,
-            label=f"Peak ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END})",
-        )
-
-        if signed_colors:
-            ax.axhline(0, color="black", lw=0.8, zorder=1)
-
-        long_df = _hour_of_day_frame(_lookback_slice(series, lookback_days), by_hour_bin=True)
-        if not long_df.empty:
-            groups = [long_df.loc[long_df["hour"] == h, "value"] for h in range(24)]
-            drawn = ax.boxplot(
-                groups,
-                positions=range(24),
-                widths=0.6,
-                whis=whis,
-                showfliers=showfliers,
-                flierprops=flierprops if flierprops is not None else _DENSE_FLIERPROPS,
-                patch_artist=True,
-                boxprops={"facecolor": "tab:blue", "alpha": 0.5},
-                medianprops={"color": "black"},
-            )
-
-            if signed_colors:
-                for patch, group in zip(drawn["boxes"], groups, strict=True):
-                    patch.set_facecolor(_signed_box_color(group.median()))
-
+        draw_timeofday_box(ax, series, **box_kwargs)
         ax.set_title(label)
-        ax.set_xlabel("time of day (hour)")
         ax.set_ylabel(ylabel)
-        ax.set_xlim(-1, 24)
-        # boxplot() leaves a fixed tick formatter behind, which labels ticks
-        # by their position in the tick list rather than by value - set_xticks
-        # alone would label hours 0,4,8,...,20 as "0,1,2,3,4,5". Passing
-        # labels explicitly replaces that formatter.
-        ax.set_xticks(_BOX_XTICKS, labels=[str(h) for h in _BOX_XTICKS])
 
-    legend_keys = None
-    if signed_colors:
-        legend_keys = [
-            Patch(facecolor=DISCHARGE_COLOR, alpha=0.5, label="discharging (injection)"),
-            Patch(facecolor=CHARGE_COLOR, alpha=0.5, label="charging (withdrawal)"),
-            Patch(facecolor=_NO_NET_BOX_COLOR, alpha=0.5, label="no net direction (median 0)"),
-        ]
-
+    legend_keys = _signed_legend_keys(box_kwargs.get("signed_colors", False))
     _finish_grid(fig, axes, len(panels), title, filename, extra_handles=legend_keys)
+
 
 def plot_soc_timeofday_box_grid(
     df: pd.DataFrame,
@@ -211,5 +237,6 @@ def plot_soc_timeofday_box_grid(
 ):
     """One box plot per battery, from the `<code><column_suffix>` columns."""
     plot_timeofday_box_grid(
-        battery_panels(df, column_suffix), ylabel, title, filename, lookback_days, **box_kwargs
+        battery_panels(df, column_suffix), ylabel, title, filename,
+        lookback_days=lookback_days, **box_kwargs,
     )

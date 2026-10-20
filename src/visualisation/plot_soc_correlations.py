@@ -13,22 +13,16 @@ import numpy as np
 import pandas as pd
 
 from data_extraction.catalog import load
-from data_processing.demand import DEMAND_COLUMN, clean_demand
-from data_processing.store import load_clean
+from tools.io import load_clean
 from tools.constants import battery_codes
-from tools.paths import clean_data_dir, local_plots_dir
+from tools.paths import local_plots_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 from visualisation.plot_variables_correlation import binned_stat
 
 
 def load_temperature() -> pd.Series:
-    """5-minutely Perth temperature, converted to the same timezone as the
-    SOC index so the two align on a plain index join. The csv is written in
-    UTC by exploration/weather.py, so it has to be parsed as dates first -
-    tz_convert on a plain string index just raises."""
-    path = clean_data_dir / "5min_temperature.csv"
-    temp = pd.read_csv(path, parse_dates=["timestamp"], index_col="timestamp")["temperature"]
-    return temp.tz_convert("Australia/Perth")
+    """5-minutely Perth temperature, in the same timezone as the SOC index."""
+    return load_clean("5min_temperature")["temperature"].tz_convert("Australia/Perth")
 
 
 def load_energy_price() -> pd.Series:
@@ -70,28 +64,28 @@ def plot_soc_vs(
     panel per battery. Despite the name it isn't SOC-only - pass the power
     frame with `column_suffix="_power_pct"` to plot power instead.
 
-    soc_df   : wide frame indexed by dispatch interval, with a
-               `<code><column_suffix>` column per battery
-    x_series : Series indexed by timestamp (temperature, price, demand, ...);
-               joined on the index, so it only has to overlap in time
-    at_time  : "HH:MM", or a list of them, to restrict to that interval of
-               each day. Pooling all 288 intervals mixes batteries at every
-               point of their daily cycle, which is what flattens these
-               plots; fixing the time holds the cycle constant so what's
-               left is the response to x. With a list, each time gets its
-               own colour and its own summary line in every panel, so the
-               times can be compared directly.
-    bins     : default 30, or 12 when `at_time` is set - one interval a day
-               is ~1,000 readings, not ~300,000, so 30 bins would leave too
-               few readings per bin to summarise
+    soc_df: wide frame indexed by dispatch interval, with a
+        `<code><column_suffix>` column per battery
+    x_series: Series indexed by timestamp (temperature, price, demand, ...);
+        joined on the index, so it only has to overlap in time
+    at_time: "HH:MM", or a list of them, to restrict to that interval of
+        each day. Pooling all 288 intervals mixes batteries at every
+        point of their daily cycle, which is what flattens these
+        plots; fixing the time holds the cycle constant so what's
+        left is the response to x. With a list, each time gets its
+        own colour and its own summary line in every panel, so the
+        times can be compared directly.
+    bins: default 30, or 12 when `at_time` is set - one interval a day
+        is ~1,000 readings, not ~300,000, so 30 bins would leave too
+        few readings per bin to summarise
     min_bin_count: default 50, or 15 when `at_time` is set, for the same
-               reason - at the pooled default an at_time line would be
-               blanked entirely
+        reason - at the pooled default an at_time line would be
+        blanked entirely
     bin_method: "width" or "quantile" for the summary line - see bin_edges
-    stat     : "median" or "mean" for that line - see binned_stat
-    xscale   : optional matplotlib x scale, e.g. "symlog" for a heavy-tailed
-               variable that also goes negative (price), with any extra
-               arguments in `xscale_kwargs` (e.g. {"linthresh": 200})
+    stat: "median" or "mean" for that line - see binned_stat
+    xscale: optional matplotlib x scale, e.g. "symlog" for a heavy-tailed
+        variable that also goes negative (price), with any extra
+        arguments in `xscale_kwargs` (e.g. {"linthresh": 200})
     zero_line: draw y=0, for signed quantities like power
     max_points: subsample per panel for legibility; None keeps everything
     """
@@ -234,7 +228,7 @@ def main():
     power = load_clean("power")
 
     temperature = load_temperature()
-    demand = clean_demand(load("demand")[DEMAND_COLUMN])
+    demand = load_clean("demand")["demand"]
     price = load_energy_price()
 
     _plot_pooled_and_by_time(
