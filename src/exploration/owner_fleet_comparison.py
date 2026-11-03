@@ -5,11 +5,13 @@
 
 import matplotlib.pyplot as plt
 
-from analysis.owner_fleets import owner_fleet_soc_pct
-from tools.constants import PEAK_ESROI_START, commissioning_dates
+from analysis.energy import discharge_cycles_by_window
+from analysis.owner_fleets import OWNER_BATTERIES, owner_fleet_soc_pct
+from tools.constants import PEAK_ESROI_START, battery_capacity_MWh, commissioning_dates
 from tools.io import load_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import SOC_BINS, save_figure
+from visualisation.plot_cycles import plot_cycles_by_window
 from visualisation.plot_distributions import _plot_one_distribution
 
 FOLDER = "owner_fleet_comparison"
@@ -43,6 +45,20 @@ def main():
         f"Fleet SOC at ESROI start ({PEAK_ESROI_START}) by owner ({period})",
         f"{FOLDER}/owner_soc_distribution_esroi_start.png",
     )
+
+    # How many cycles a day each battery does, and when: one deep evening cycle, or morning + evening.
+    # Each battery counted from its commissioning date, or the analysis start if that's later.
+    power = load_clean("power")
+    owners = {code: owner for owner, codes in OWNER_BATTERIES.items() for code in codes}
+    first_days = {code: max(commissioning[code], power.index.min()) for code in owners}
+    cycles = discharge_cycles_by_window(power, battery_capacity_MWh, first_days)
+    plot_cycles_by_window(
+        cycles,
+        owners,
+        f"Battery cycles per day, by part of the day ({period})",
+        f"{FOLDER}/cycles_per_day_by_window.png",
+    )
+    print(cycles.assign(total=cycles.sum(axis=1)).round(2))
 
 
 if __name__ == "__main__":

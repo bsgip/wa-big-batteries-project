@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 
 from data_extraction.catalog import load
 from tools.io import save_clean
-from visualisation.plot_trend_band import trend_band_event_plot
+from tools.paths import local_plots_dir
+from tools.plot_style import save_figure
+from visualisation.plot_trend_band import mark_period_medians, trend_band_plot
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,10 @@ INTERVALS_PER_HOUR = 12  # 5-min prices
 
 # A day needs this many of its 288 5-min intervals to count; part days give misleading stats.
 MIN_INTERVALS_PER_DAY = 240
+
+# year-on-year comparison: the same months each year (Dec-Sep, the full months every year has),
+# so seasonality doesn't read as change
+SAME_MONTHS = [("2023-12-01", "2024-09-30"), ("2024-12-01", "2025-09-30"), ("2025-12-01", "2026-09-30")]
 
 
 def _best_spread(day_prices, hours):
@@ -96,30 +102,36 @@ def daily_price_measures(
 
 
 def plot_std_trend(measures):
-    """Monthly trend band of the daily price standard deviation, with SSE events below."""
-    trend_band_event_plot(
+    """Monthly trend band of the daily price standard deviation."""
+    trend_band_plot(
         df=measures[['std']],
         ylabel='Daily price standard deviation ($/MWh)',
-        title='Intraday price variability: monthly spread of the daily price std',
-        filename='price_daily_std_trend_events.png',
+        title='Daily price variability: monthly spread of the daily price std',
+        filename='price_daily_std_trend.png',
     )
-    
-    
+
+
 def plot_price_median_trend(measures):
-    """Monthly trend band of daily energy price median"""
-    trend_band_event_plot(
+    """Monthly trend band of daily energy price median, with a dashed line at the median of the
+    daily medians over the same months each year (SAME_MONTHS)."""
+    filename = 'price_daily_median_trend.png'
+    fig, ax, _ = trend_band_plot(
         df=measures['median'],
         ylabel='Daily price median ($/MWh)',
-        title='Intraday price median: monthly spread of the daily price median',
-        filename='price_daily_median_trend_events.png',
+        title='Daily price median: monthly spread of the daily price median',
+        filename=filename,
     )
+    legend = ax.get_legend()  # mark_period_medians sets its own legend - keep the one above the plot too
+    mark_period_medians(ax, measures['median'], SAME_MONTHS, value_format="{:,.0f} $/MWh")
+    ax.add_artist(legend)
+    save_figure(fig, local_plots_dir / filename)  # over the same file
 
 
 
 def main():
     pd.set_option("display.max_columns", None)
     
-    measures = daily_price_measures(load("price"))
+    measures = daily_price_measures(load("price")["energy_price"])
     
     print(measures.head())
     

@@ -57,6 +57,26 @@ def _extract_demand(item: dict) -> list[dict]:
     return rows
 
 
+def _extract_power(item: dict) -> list[dict]:
+    """Per-facility measured output (MW), off the `<code>.energy.sentOut`
+    SCADA tag - EVERY facility with SCADA, not just batteries: thermal,
+    wind/solar, batteries (positive discharging, negative charging) and a
+    few loads (negative). Demand side programmes have no sentOut tag.
+
+    This replaced initialMw from dispatchSolution as the source of power: the
+    two are the same number (checked: identical for every facility in both,
+    on 2023-09-30 14:00, 2024-01-15 and 2026-10-18 08:00), and this way it
+    comes out of the much cheaper caseInputData walk."""
+    dispatch_interval = item["dispatchInterval"]
+    rows = []
+    for scada in item["scada"]:
+        tag = scada["tag"]
+        if tag.endswith(".energy.sentOut"):
+            code = tag.removesuffix(".energy.sentOut")
+            rows.append({"dispatch_interval": dispatch_interval, "code": code, "value": scada["value"]})
+    return rows
+
+
 def _extract_dispatch_condition(item: dict) -> list[dict]:
     """System-wide dispatch condition SCADA tags (e.g. loadRelief)."""
     dispatch_interval = item["dispatchInterval"]
@@ -93,6 +113,55 @@ def _extract_bidstack(item: dict) -> list[dict]:
                     "submission_id": submission_id,
                 }
             )
+    return rows
+
+
+FCESS_MARKET_SERVICES = ["regulationRaise", "regulationLower", "contingencyRaise", "contingencyLower", "rocof"]
+
+# Enablement limits per facility (JSON key -> column), as offered and as used by
+# WEMDE. Per facility, so repeated on every tranche row.
+_FCESS_FACILITY_FIELDS = {
+    "maximumCapacity": "maximum_capacity",
+    "enablementMinimum": "enablement_minimum",
+    "enablementMinimumValueUsed": "enablement_minimum_used",
+    "lowBreakpoint": "low_breakpoint",
+    "lowBreakpointValueUsed": "low_breakpoint_used",
+    "highBreakpoint": "high_breakpoint",
+    "highBreakpointValueUsed": "high_breakpoint_used",
+    "enablementMaximum": "enablement_maximum",
+    "enablementMaximumValueUsed": "enablement_maximum_used",
+}
+
+
+def _extract_fcess_bidstack(item: dict) -> list[dict]:
+    """Battery FCESS offer tranches, off markets.<service>.facilities[].tranches[]
+    for the five FCESS markets, plus each facility's enablement limits."""
+    dispatch_interval = item["dispatchInterval"]
+    rows = []
+    for market_service in FCESS_MARKET_SERVICES:
+        for facility in item["markets"][market_service]["facilities"]:
+            code = facility.get("facilityCode")
+            if code not in esr_codes:
+                continue
+            submission_id = facility.get("submissionId")
+            limits = {column: facility.get(key) for key, column in _FCESS_FACILITY_FIELDS.items()}
+            for tranche in facility.get("tranches") or []:
+                rows.append(
+                    {
+                        "dispatch_interval": dispatch_interval,
+                        "market_service": market_service,
+                        "code": code,
+                        "tranche": tranche["tranche"],
+                        "quantity": tranche["quantity"],
+                        "submitted_price": tranche["submittedPrice"],
+                        "lfa_price": tranche["lfaPrice"],
+                        "capacity_type": tranche["capacityType"],
+                        "fuel_type": tranche["fuelType"],
+                        "notice_time": tranche["noticeTime"],
+                        "submission_id": submission_id,
+                        **limits,
+                    }
+                )
     return rows
 
 
@@ -194,14 +263,28 @@ def _finish_bidstack(rows: list[dict]) -> pd.DataFrame:
     return df.sort_values(["dispatch_interval", "code", "tranche"]).reset_index(drop=True)
 
 
+_FCESS_BIDSTACK_COLUMNS = (
+    ["dispatch_interval", "market_service"] + _BIDSTACK_COLUMNS[1:] + list(_FCESS_FACILITY_FIELDS.values())
+)
+
+
+def _finish_fcess_bidstack(rows: list[dict]) -> pd.DataFrame:
+    """Long, one row per (dispatch_interval, market_service, code, tranche)."""
+    df = pd.DataFrame(rows, columns=_FCESS_BIDSTACK_COLUMNS)
+    df["dispatch_interval"] = pd.to_datetime(df["dispatch_interval"]).dt.tz_convert("Australia/Perth")
+    return df.sort_values(["dispatch_interval", "market_service", "code", "tranche"]).reset_index(drop=True)
+
+
 # name -> (extractor, finisher). This is the whole registry - add a field by
 # adding one entry here.
 _FIELDS = {
     "charge_level": (_extract_charge_level, _finish_wide("dispatch_interval", "code")),
     "demand": (_extract_demand, _finish_wide("dispatch_interval", "tag")),
     "bidstack": (_extract_bidstack, _finish_bidstack),
+    "fcess_bidstack": (_extract_fcess_bidstack, _finish_fcess_bidstack),
     "dispatch_condition": (_extract_dispatch_condition, _finish_wide("dispatch_interval", "tag")),
     "unconstrained_forecast": (_extract_unconstrained_forecast, _finish_unconstrained_forecast),
+    "power": (_extract_power, _finish_wide("dispatch_interval", "code")),
 }
 
 # For catalog.py to validate its entries against at import time.

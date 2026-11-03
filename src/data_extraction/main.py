@@ -1,12 +1,8 @@
-"""Extract fields out of the raw WEMDE JSON into
-data/processed_data/extracted/.
+"""Extract fields out of the raw WEMDE JSON into data/processed_data/extracted/.
 
-This is NOT a pipeline you run start to finish - it's a scratchpad. Uncomment
-the line for whatever you actually want extracted and run it. Extraction is a
-one-time job per field and an expensive one, so anything already extracted is
-skipped unless you pass refresh=True.
-
-Cleaning happens separately, in data_processing/main.py.
+Each extract() call walks one corpus once, however many fields it's given.
+Datasets that already exist are skipped unless refresh=True. Cleaning happens
+separately, in data_processing/main.py.
 
 Usage:
     python -m data_extraction.main
@@ -14,34 +10,65 @@ Usage:
 
 import logging
 
-# extract is imported for the commented-out calls in main() - uncomment one and run.
-from data_extraction.catalog import extract, list_datasets  # noqa: F401
+from data_extraction.catalog import extract, list_datasets
 
 logger = logging.getLogger(__name__)
 
 
 def main():
     for name, description, done in list_datasets():
-        print(f"  {name:9} {'[extracted]' if done else '[MISSING]  '}  {description}")
+        print(f"  {name:40} {'[extracted]' if done else '[MISSING]  '}  {description}")
 
-    # Fields from one corpus are grouped into a SINGLE walk, so ask for
-    # everything you want from a source in one call rather than one at a time.
+    # Case input run
+    extract(
+        [
+            "soc",
+            "bidstack",
+            "dispatch_condition",
+            "unconstrained_forecast",
+            "power",
+        ],
+        refresh=True,
+    )
 
-    # extract(["soc", "bidstack"], refresh=True)  # one caseInputData walk (~1,056 files, ~70GB)
-    # extract(["price", "power"])  # one dispatchSolution walk (~300k files, ~45min)
-    # extract(["rcoq"])  # reads the monthly AEMO CSVs in data/rcoq/ (seconds, no corpus walk)
+    extract(["fcess_bidstack"], refresh=True)
 
-    # Explore a field on a couple of days first (dispatchSolution only).
-    # Returns the frames for inspection without writing partial data to disk:
+    # Dispatch solution run
+    extract(
+        [
+            "price",
+            "price_setting",
+            "market_shortfalls",
+            "market_service_requirements",
+            "dispatch_total",
+            "available_quantities",
+            "in_service_quantities",
+            "projected_level",
+            "energy_schedule",
+            "fcess_schedule",
+        ],
+        refresh=True,
+    )
+
+    # Predispatch solution run
+    extract(
+        [
+            "predispatch_price",
+            "predispatch_price_setting",
+            "predispatch_market_shortfalls",
+            "predispatch_market_service_requirements",
+            "predispatch_dispatch_total",
+            "predispatch_projected_level",
+            "predispatch_energy_schedule",
+        ],
+        refresh=True,
+    )
+
+    # RCOQ, from the monthly CSVs in data/rcoq/
+    # extract(["rcoq"], refresh=True)
+
+    # Explore a field on a few days without saving
     # df = extract(["price"], dates=["2025-01-21"])["price"]
-
-    # Re-extract something that already exists - only for a bug in the
-    # extraction itself, not for a cleaning change:
-    # extract(["soc"], refresh=True)
-
-    # Registered in parse_case_input._FIELDS but never extracted, so asking
-    # for it means a full caseInputData walk:
-    # extract(["dispatch_condition"])  # needs a CATALOG entry first
 
 
 if __name__ == "__main__":

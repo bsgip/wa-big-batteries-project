@@ -1,0 +1,86 @@
+code,technology,group,confidence,basis
+BW1_BLUEWATERS_G2,coal,thermal,high,Bluewaters coal power station
+BW2_BLUEWATERS_G1,coal,thermal,high,Bluewaters coal power station
+COLLIE_G1,coal,thermal,high,Collie coal power station
+MUJA_G6,coal,thermal,high,Muja coal power station (unit retired; last seen 2025-03)
+MUJA_G7,coal,thermal,high,Muja coal power station
+MUJA_G8,coal,thermal,high,Muja coal power station
+COCKBURN_CCG1,gas,thermal,high,combined cycle gas turbine (CCG in code)
+NEWGEN_KWINANA_CCG1,gas,thermal,high,combined cycle gas turbine (CCG in code)
+NEWGEN_NEERABUP_GT1,gas,thermal,high,gas turbine (GT in code)
+KEMERTON_GT11,gas,thermal,high,gas turbine (GT in code)
+KEMERTON_GT12,gas,thermal,high,gas turbine (GT in code)
+KWINANA_GT2,gas,thermal,high,gas turbine (GT in code)
+KWINANA_GT3,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT1,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT2,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT3,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT4,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT5,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT7,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT9,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT10,gas,thermal,high,gas turbine (GT in code)
+PINJAR_GT11,gas,thermal,high,gas turbine (GT in code)
+MUNGARRA_GT1,gas,thermal,high,gas turbine (GT in code)
+MUNGARRA_GT3,gas,thermal,high,gas turbine (GT in code)
+ALINTA_WGP_GT,gas,thermal,check,Wagerup peaking gas turbine; may be dual fuel gas/distillate
+ALINTA_WGP_U2,gas,thermal,check,Wagerup peaking unit; may be dual fuel gas/distillate
+ALINTA_PNJ_U1,gas,thermal,check,Pinjarra cogeneration unit - assumed gas
+ALINTA_PNJ_U2,gas,thermal,check,Pinjarra cogeneration unit - assumed gas
+ALCOA_WGP,gas,thermal,check,Alcoa Wagerup - assumed gas cogeneration; flat baseload profile
+TIWEST_COG1,gas,thermal,check,cogeneration (COG in code) - assumed gas; flat baseload profile
+PERTHENERGY_KWINANA_GT1,gas,thermal,check,gas turbine (GT in code); offers flagged LIQUID in 2023 - may be dual fuel
+WEST_KALGOORLIE_GT2,gas,thermal,check,gas turbine (GT in code); offers flagged LIQUID in 2023 - may run on distillate
+WEST_KALGOORLIE_GT3,gas,thermal,check,gas turbine (GT in code); offers flagged LIQUID in 2023 - may run on distillate
+STHRNCRS_EG,gas,thermal,check,Southern Cross - assumed gas; flat ~23 MW baseload profile
+PRK_AG,liquid,thermal,check,offers flagged LIQUID; fuel not confirmed
+NAMKKN_MERR_SG1,liquid,thermal,check,Merredin peaker; offers flagged LIQUID; fuel not confirmed
+TESLA_GERALDTON_G1,liquid,thermal,check,small ~10 MW peaker; offers flagged LIQUID; fuel not confirmed
+TESLA_KEMERTON_G1,liquid,thermal,check,small ~10 MW peaker; offers flagged LIQUID; fuel not confirmed
+TESLA_NORTHAM_G1,liquid,thermal,check,small ~10 MW peaker; offers flagged LIQUID; fuel not confirmed
+TESLA_PICTON_G1,liquid,thermal,check,small ~10 MW peaker; offers flagged LIQUID; fuel not confirmed
+PHOENIX_KWINANA_WTE_G1,waste_to_energy,thermal,check,waste to energy (WTE in code); partly renewable depending on definition
+BIOGAS01,bioenergy,renewable,check,biogas (name) - small flat profile
+HENDERSON_RENEWABLE_IG1,bioenergy,renewable,check,assumed landfill gas (Henderson) - small flat profile
+RED_HILL,bioenergy,renewable,check,assumed landfill gas (Red Hill) - small flat profile
+ROCKINGHAM,bioenergy,renewable,check,assumed landfill gas (Rockingham) - small; 0 MW on the sample days
+SOUTH_CARDUP,bioenergy,renewable,check,assumed landfill gas (South Cardup) - small flat profile
+TAMALA_PARK,bioenergy,renewable,check,assumed landfill gas (Tamala Park) - small flat profile
+ALBANY_WF1,wind,renewable,high,wind farm (WF in code)
+ALINTA_WWF,wind,renewable,high,Walkaway wind farm (WWF in code)
+BADGINGARRA_WF1,wind,renewable,high,wind farm (WF in code)
+BLAIRFOX_BEROSRD_WF1,wind,renewable,high,wind farm (WF in code)
+BLAIRFOX_KARAKIN_WF1,wind,renewable,high,wind farm (WF in code)
+BLAIRFOX_WESTHILLS_WF3,wind,renewable,high,wind farm (WF in code)
+BREMER_BAY_WF1,wind,renewable,high,wind farm (WF in code)
+DCWL_DENMARK_WF1,wind,renewable,high,wind farm (WF in code)
+EDWFMAN_WF1,wind,renewable,high,wind farm (WF in code)
+FLATROCKS_WF1,wind,renewable,high,wind farm (WF in code)
+GRASMERE_WF1,wind,renewable,high,wind farm (WF in code)
+INVESTEC_COLLGAR_WF1,wind,renewable,high,wind farm (WF in code)
+KALBARRI_WF1,wind,renewable,high,wind farm (WF in code)
+MWF_MUMBIDA_WF1,wind,renewable,high,wind farm (WF in code)
+SKYFRM_MTBARKER_WF1,wind,renewable,high,wind farm (WF in code)
+WARRADARGE_WF1,wind,renewable,high,wind farm (WF in code)
+YANDIN_WF1,wind,renewable,high,wind farm (WF in code)
+AMBRISOLAR_PV1,solar,renewable,high,solar farm (PV in code)
+GREENOUGH_RIVER_PV1,solar,renewable,high,solar farm (PV in code)
+MERSOLAR_PV1,solar,renewable,high,solar farm (PV in code)
+NORTHAM_SF_PV1,solar,renewable,high,solar farm (PV in code)
+SBSOLAR1_CUNDERDIN_PV1,solar,renewable,check,solar farm with co-located storage - output can include battery discharge
+PRDSO_WALPOLE_HG1,unknown,unknown,check,1.5 MW non-scheduled; technology not identifiable from code; 0 MW on sample days
+ALINTA_WGP_ESR1,battery,storage,high,battery (ESR in code)
+COLLIE_BESS2,battery,storage,high,battery (BESS in code)
+COLLIE_ESR1,battery,storage,high,battery (ESR in code)
+COLLIE_ESR4,battery,storage,high,battery (ESR in code)
+COLLIE_ESR5,battery,storage,high,battery (ESR in code)
+KWINANA_ESR1,battery,storage,high,battery (ESR in code)
+KWINANA_ESR2,battery,storage,high,battery (ESR in code)
+MERREDIN_ESR1,battery,storage,high,battery (ESR in code); not in facilities.csv
+ALCOA_KW_IL,load,load,high,Non-Dispatchable Load in facilities.csv
+BODDINGTON_MINE,load,load,check,mine load; not in facilities.csv
+KARARA_MINE,load,load,check,mine load; not in facilities.csv
+NWNMTMN_FIM_INML1,load,load,check,reads negative (consumption) in sentOut; not in facilities.csv
+SIMCOA_IPT_LD_01,load,load,high,Interruptible Load in facilities.csv
+STHRNCRS_IL,load,load,check,interruptible load (IL in code); reads negative in sentOut
+WAPL_WORSLEY_IL1,load,load,high,Non-Dispatchable Load in facilities.csv

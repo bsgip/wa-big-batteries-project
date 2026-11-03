@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 CHARGE_LEVEL_SENTINEL = 999
 
+# telling an SOC data gap from an outage (see soc_telemetry_gap)
+POWER_ACTIVE_MW = 1  # |MW| above this = charging or discharging, not idle
+DATA_GAP_WINDOW_MINUTES = 60  # how far either side of a missing SOC reading to look for power activity
+
 
 def clean_charge_level_sentinel_df(df: pd.DataFrame) -> pd.DataFrame:
     """The chargeLevel SCADA tag reports a fixed 999 (MWh) sentinel when
@@ -112,20 +116,65 @@ def add_soc_pct_columns(df: pd.DataFrame, capacity: dict[str, float] | None = No
     return df
 
 
+def soc_telemetry_gap(
+    df: pd.DataFrame,
+    power: pd.DataFrame,
+    codes: list[str],
+    window_minutes: int = DATA_GAP_WINDOW_MINUTES,
+    active_mw: float = POWER_ACTIVE_MW,
+) -> pd.DataFrame:
+    """True where a battery has no SOC reading and, within window_minutes either side,
+    its power either
+      - shows it charging or discharging (|MW| > active_mw): it is operating, only the SOC data is missing, or
+      - has no readings at all: its telemetry is missing altogether.
+    Either way its charge is unknown, not 0.
+
+    No SOC reading with power readings that are all idle is NOT a gap: that battery
+    may be tripped or on outage, so it stays in the fleet's capacity and pulls
+    fleet_soc_pct down.
+
+    power: battery power (MW), one column per battery, same 5-min index as df
+    """
+    interval = df.index.to_series().diff().median()
+    half = max(1, round(pd.Timedelta(minutes=window_minutes) / interval))
+
+    def anywhere_nearby(flags: pd.DataFrame) -> pd.DataFrame:
+        return flags.astype(float).rolling(2 * half + 1, center=True, min_periods=1).max().gt(0)
+
+    mw = power.reindex(index=df.index, columns=codes)
+    active_nearby = anywhere_nearby(mw.abs().gt(active_mw))  # NaN compares False, so never active
+    readings_nearby = anywhere_nearby(mw.notna())
+
+    return df[codes].isna() & (active_nearby | ~readings_nearby)
+
+
 def add_fleet_soc_columns(
     df: pd.DataFrame,
     capacity: dict[str, float] | None = None,
     commissioning: dict[str, pd.Timestamp] | None = None,
     codes: list[str] | None = None,
+    power: pd.DataFrame | None = None,
+    sentinel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Add fleet_capacity_MWh, fleet_soc_MWh and fleet_soc_pct over the fleet's batteries.
+    """Add fleet_capacity_MWh, fleet_capacity_counted_MWh, fleet_soc_MWh and fleet_soc_pct
+    over the fleet's batteries.
 
     codes: batteries in the fleet (default: battery_codes, i.e. without ALINTA_WGP_ESR1,
         so the fleet matches the power data)
     commissioning: from constants.commissioning_dates (default: from this frame)
+    power: battery power (MW) - used to tell SOC data gaps from outages (see below)
+    sentinel: True where the raw reading was the 999 sentinel, from before
+        clean_charge_level_sentinel_df turned it into NaN
 
-    A battery counts toward capacity from its commissioning date, also while it isn't reporting,
-    so an outage pulls fleet_soc_pct down. Rows where no battery reports are NaN, not 0.
+    fleet_capacity_MWh: every battery from its commissioning date.
+    fleet_capacity_counted_MWh: the same, minus batteries with an SOC telemetry gap, whose
+        charge is unknown, not 0:
+        - the reading was the 999 sentinel - telemetry invalid by definition, whatever power does
+        - no SOC reading while power shows them operating, or no power reading either
+          (soc_telemetry_gap)
+        Any other missing reading with idle power still counts, so a trip or outage pulls
+        fleet_soc_pct down. Without power or sentinel, nothing is taken out.
+    fleet_soc_pct: fleet_soc_MWh / fleet_capacity_counted_MWh. Rows where no battery reports are NaN, not 0.
     """
     rated = battery_capacity_MWh if capacity is None else capacity
     fleet = battery_codes if codes is None else codes
@@ -139,20 +188,41 @@ def add_fleet_soc_columns(
     dates = {code: commissioning[code] for code in codes_present if code in commissioning}
 
     df["fleet_capacity_MWh"] = commissioned_capacity(df.index, dates, rated)
+
+    in_fleet = list(dates)
+    gaps = pd.DataFrame(False, index=df.index, columns=in_fleet)
+    if sentinel is not None:
+        gaps |= sentinel.reindex(index=df.index, columns=in_fleet, fill_value=False)
+    if power is not None:
+        gaps |= soc_telemetry_gap(df, power, in_fleet)
+
+    # only a battery already in the capacity (commissioned) can be taken out of it
+    commissioned = pd.DataFrame({code: df.index >= dates[code] for code in in_fleet}, index=df.index)
+    gap_capacity = (gaps & commissioned).mul(pd.Series(rated)[in_fleet]).sum(axis=1)
+    logger.info(f"fleet capacity: {int((gap_capacity > 0).sum())} intervals with an SOC telemetry gap taken out")
+    counted = df["fleet_capacity_MWh"] - gap_capacity
+    df["fleet_capacity_counted_MWh"] = counted
+
     df["fleet_soc_MWh"] = df[codes_present].sum(axis=1, min_count=1)
-    df["fleet_soc_pct"] = df["fleet_soc_MWh"] / df["fleet_capacity_MWh"] * 100
+    df["fleet_soc_pct"] = df["fleet_soc_MWh"] / counted.where(counted > 0) * 100
 
     return df
 
 
-def process(df: pd.DataFrame) -> pd.DataFrame:
+def process(df: pd.DataFrame, power: pd.DataFrame | None = None) -> pd.DataFrame:
     """Extracted SOC (MWh) -> analysis-ready: sentinel and sustained-zero
     readings masked as missing, plus a <code>_soc_pct column per battery.
     The bare <code> MWh columns are kept alongside the pct ones - plots use
-    both."""
+    both.
+
+    power: battery power (MW), e.g. load("power") - lets the fleet columns
+    tell SOC data gaps from outages (see add_fleet_soc_columns)."""
+    # where the 999s were, before cleaning makes them indistinguishable from other NaNs
+    sentinel = df == CHARGE_LEVEL_SENTINEL
+
     df = clean_charge_level_sentinel_df(df)
     df = clean_charge_level_overshoot_df(df)
     df = mask_sustained_zero_runs(df)
     df = add_soc_pct_columns(df)
 
-    return add_fleet_soc_columns(df)
+    return add_fleet_soc_columns(df, power=power, sentinel=sentinel)

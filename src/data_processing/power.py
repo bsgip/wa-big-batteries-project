@@ -1,10 +1,15 @@
 """Derived columns and range checks for battery power (the extracted
-initialMw field, in MW - positive discharging, negative charging).
+sentOut SCADA field, in MW - positive discharging, negative charging).
+
+The extracted frame has a column for EVERY facility, not just batteries;
+everything here only touches the battery_codes columns and passes the rest
+through unchanged.
 
 No sentinel masking here: unlike SOC's chargeLevel 999 (see soc.py), a
 sample of initialMw across the dispatchSolution corpus found no equivalent
 sentinel value - a full-corpus check confirmed it, the worst overshoot being
-KWINANA_ESR1 at 1.9% over its rating.
+KWINANA_ESR1 at 1.9% over its rating. (That check was on initialMw, which
+power used to come from; sentOut is the same number.)
 """
 
 import logging
@@ -30,7 +35,7 @@ def add_power_pct_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_power_overshoot_df(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
     """Clip each battery's power to +/- its rated capacity in MW. The clip is
-    symmetric because initialMw is signed - positive discharging, negative
+    symmetric because power is signed - positive discharging, negative
     charging - so both directions are capped at the rating."""
     rated_capacity = battery_capacity_MW if capacity is None else capacity
     df = df.copy()

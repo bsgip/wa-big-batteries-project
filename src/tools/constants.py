@@ -14,6 +14,7 @@ DATASET_FOLDERS = ("current", "previous")
 # actually being parsed for now.
 CASE_INPUT_DATASET = "caseInputData"
 DISPATCH_SOLUTION_DATASET = "dispatchSolution/dispatchData"
+PREDISPATCH_SOLUTION_DATASET = "dispatchSolution/predispatchData"
 
 
 esr_codes = sorted(
@@ -111,5 +112,4 @@ system_stress_events = [
     {"date": "2025-03-06", "event_start_time": "15:00", "event_end_time": "22:00", "highest_stress_time": "18:20"},
     {"date": "2024-01-13", "event_start_time": "16:00", "event_end_time": "20:00", "highest_stress_time": None},
     {"date": "2025-08-25", "event_start_time": "17:45", "event_end_time": "23:40", "highest_stress_time": None},
-    {"date": "2026-05-30", "event_start_time": None, "event_end_time": None, "highest_stress_time": None},
 ]

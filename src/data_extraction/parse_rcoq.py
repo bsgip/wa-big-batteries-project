@@ -32,8 +32,11 @@ def to_5min(raw: pd.DataFrame) -> pd.DataFrame:
     start = pd.to_datetime(long["Trading Interval"]) + pd.to_timedelta((di_number - 1) * 5, unit="min")
     long["dispatch_interval"] = start.dt.tz_localize("Australia/Perth")
 
-    # a facility can be listed under two component names over time (never at once), so summing is safe
-    return long.pivot_table(index="dispatch_interval", columns="Facility Code", values="rcoq_mw", aggfunc="sum")
+    # sum a facility's components: hybrid solar farms (AMBRISOLAR_PV1, SBSOLAR1_CUNDERDIN_PV1) have an
+    # ESR (storage) and an IGS (generator) row per interval, each with its own RCOQ.
+    # min_count=1 keeps a blank RCOQ as NaN; a plain sum (and pivot_table) would turn it into 0.
+    rcoq = long.groupby(["dispatch_interval", "Facility Code"])["rcoq_mw"].sum(min_count=1)
+    return rcoq.unstack("Facility Code")
 
 
 def build_rcoq_data() -> dict[str, pd.DataFrame]:

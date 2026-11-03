@@ -1,15 +1,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from analysis.energy import fleet_soc_drop_pct
 from tools.io import load_clean
 from tools.paths import local_plots_dir
-from tools.constants import battery_codes
+from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_codes
 from tools.plot_style import SOC_BINS, save_figure
 from tools.seasons import SEASONS, season_of
 from visualisation.plot_distributions import _plot_one_distribution
 from visualisation.plot_fleet_capacity import plot_fleet_capacity_evolution
 from visualisation.plot_time_of_day import plot_timeofday_box
-from visualisation.plot_trend_band import trend_band_event_plot
+from visualisation.plot_trend_band import period_box_plot, trend_band_plot
 
 
 pd.set_option("display.max_columns", None)
@@ -101,18 +102,46 @@ def main():
     trend_title = "Fleet SOC trend (at ESROI start - 17:30)"
 
     # fleet_evolution/
-    trend_band_event_plot(
+    trend_band_plot(
         esroi_soc,
         ylabel="Fleet SOC (%)",
         title=f"{trend_title}: monthly median with spread",
-        filename="fleet_evolution/fleet_soc_evolution_trend_events.png",
+        filename="fleet_evolution/fleet_soc_evolution_trend.png",
     )
-    trend_band_event_plot(
+    trend_band_plot(
         esroi_soc,
         period="season",
         ylabel="Fleet SOC (%)",
         title=f"{trend_title}: seasonal median with spread",
-        filename="fleet_evolution/fleet_soc_evolution_trend_seasonal_events.png",
+        filename="fleet_evolution/fleet_soc_evolution_trend_seasonal.png",
+    )
+    trend_band_plot(
+        fleet.at_time(PEAK_ESROI_END),
+        ylabel="Fleet SOC (%)",
+        title=f"Fleet SOC trend (at ESROI end - {PEAK_ESROI_END}): monthly median with spread",
+        filename="fleet_evolution/fleet_soc_esroi_end_trend.png",
+    )
+    period_box_plot(
+        esroi_soc,
+        ylim=(0, 100),
+        ylabel="Fleet SOC (%)",
+        title="Fleet SOC at ESROI start (17:30), by month",
+        filename="fleet_evolution/fleet_soc_esroi_start_monthly_box.png",
+    )
+    # how much of that charge is used: SOC at ESROI start minus at ESROI end
+    soc_used = fleet_soc_drop_pct(soc_clean, PEAK_ESROI_START, PEAK_ESROI_END)
+    soc_used_label = f"Fleet SOC used (%)\nSOC at {PEAK_ESROI_START} − SOC at {PEAK_ESROI_END}"
+    period_box_plot(
+        soc_used,
+        ylabel=soc_used_label,
+        title=f"Fleet SOC used during ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END}), by month",
+        filename="fleet_evolution/fleet_soc_used_esroi_monthly_box.png",
+    )
+    trend_band_plot(
+        soc_used,
+        ylabel=soc_used_label,
+        title=f"Fleet SOC used during ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END}): monthly median with spread",
+        filename="fleet_evolution/fleet_soc_used_esroi_trend.png",
     )
 
     # fleet_description/

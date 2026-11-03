@@ -173,7 +173,12 @@ cython_debug/
 data/sample_raw_data
 data/quick_downloads/caseinput_json.json
 data/quick_downloads/scada_json.json
+data/processed_data
 
 # Misc
 src/aemo_ingest
 crash_course/
+
+# Temporary monthly pieces of the predispatch extraction, merged into
+# extracted/<name>.parquet when the run finishes (see data_extraction/catalog.py)
+data/processed_data/extracted/*.partial/
