@@ -11,18 +11,21 @@ from tools.plot_style import UNIT_COLORS, save_figure
 
 
 def plot_soc_vs_credit_grid(soc_start, credit_soc, capacity, title, filename, ncols=2):
-    """One panel per battery: daily SOC at the window start against the charge its RCOQ needs.
+    """Plot, per battery, daily SOC at the window start against its credit-equivalent SOC.
 
-    soc_start: daily SOC (MWh) at the window start, one column per battery
-    credit_soc: daily credit-equivalent SOC (MWh), same columns - from energy.credit_equivalent_soc_mwh
-    capacity: {code: rated MWh}, sets each panel's y-range and dotted ceiling line
-    ncols: panels per row
+    The credit line is only drawn where RCOQ > 0.
 
-    The credit line is only drawn where RCOQ > 0: a zero obligation is "nothing
-    required", not a requirement of 0 MWh worth comparing against.
+    Args:
+        soc_start: Daily SOC (MWh) at the window start, one column per battery.
+        credit_soc: Daily credit-equivalent SOC (MWh), same columns, from energy.credit_equivalent_soc_mwh.
+        capacity: {code: rated MWh}; sets each panel's y-range.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        ncols: Panels per row.
 
-    Returns (fig, axes, summary) - summary has, per battery, the days with an
-    obligation and SOC data, and how many of those started below the credit line.
+    Returns:
+        (fig, axes, summary), where summary has per battery the days with an obligation and SOC
+        data, and how many started below the credit line.
     """
     codes = list(soc_start.columns)
     nrows = math.ceil(len(codes) / ncols)
@@ -77,19 +80,20 @@ def plot_soc_vs_credit_grid(soc_start, credit_soc, capacity, title, filename, nc
 
 
 def plot_below_credit_summary(soc_start, credit, title, filename, whis=(10, 90)):
-    """Per battery, against one fixed credit-equivalent SOC: how often it starts the
-    window below it (left), and how far above/below it it usually is (right).
+    """Plot, per battery, how often SOC starts below its credit-equivalent SOC, and by how much.
 
-    soc_start: daily SOC (MWh) at the window start, one column per battery
-    credit: one credit-equivalent SOC (MWh) per battery - from energy.typical_credit_equivalent_mwh
-    whis: whisker percentiles for the deviation boxes (default 10th-90th, as in the trend plots)
+    Left: % of days below. Right: boxes of (SOC - credit) / credit x 100.
 
-    Every day with an SOC reading counts, from the battery's first reading on,
-    whether or not its RCOQ had started yet. Deviation is (SOC - credit) / credit
-    x 100, so batteries of different size share one scale and 0 = exactly at credit.
+    Args:
+        soc_start: Daily SOC (MWh) at the window start, one column per battery.
+        credit: One credit-equivalent SOC (MWh) per battery, from energy.typical_credit_equivalent_mwh.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        whis: Whisker percentiles for the boxes.
 
-    Returns (fig, axes, summary) - summary has, per battery, the credit, days,
-    days below, % below and the median deviation.
+    Returns:
+        (fig, (ax_pct, ax_dev), summary), where summary has per battery the credit, days, days
+        below, % below and median deviation.
     """
     codes = [c for c in soc_start.columns if pd.notna(credit.get(c))]
     soc = soc_start[codes]
@@ -169,20 +173,20 @@ def plot_below_credit_summary(soc_start, credit, title, filename, whis=(10, 90))
 
 
 def plot_share_below_by_month(soc_start, share, capacity, ylabel, title, filename):
-    """Monthly % of days below a threshold, one line per battery (top), over the
-    capacity those %s are counted from (bottom), on one time axis.
+    """Plot monthly % of days below a threshold per battery (top) and the capacity counted (bottom).
 
-    soc_start: the daily values the share was computed from, one column per battery
-        (SOC in MWh or %) - only used to see which days each battery has a reading
-    share: from energy.monthly_share_below - one % column per battery; its pooled "all" column isn't drawn
-    capacity: {code: rated MWh}
-    ylabel: what the top panel's % is of, e.g. "Days with SOC below 50% (%)"
+    The bottom panel counts a battery's MWh only on days it has a reading.
 
-    The bottom panel counts a battery's MWh only on days it has an SOC reading,
-    so it is the fleet the top panel's %s are measured over - not the installed
-    fleet, which can run months ahead of the SOC data.
+    Args:
+        soc_start: The daily values the share was computed from, one column per battery.
+        share: From energy.monthly_share_below; its "all" column isn't drawn.
+        capacity: {code: rated MWh}.
+        ylabel: Top panel y-axis label, e.g. "Days with SOC below 50% (%)".
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, (ax_share, ax_cap), counted) - counted is the monthly capacity (MWh).
+    Returns:
+        (fig, (ax_share, ax_cap), counted), where counted is the monthly capacity (MWh).
     """
     codes = [c for c in share.columns if c != 'all']
 

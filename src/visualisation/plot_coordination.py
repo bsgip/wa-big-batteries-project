@@ -11,12 +11,13 @@ CANCELLING_YLABEL = "Flow cancelling out\n(% of all battery flow)"
 
 
 def _hours(time_str):
+    """"HH:MM" as hours after midnight."""
     hour, minute = time_str.split(":")
     return int(hour) + int(minute) / 60
 
 
 def _stacked_bars(ax, x, table, colors, width):
-    """One stacked bar per row of table, one segment per column."""
+    """Draw one stacked bar per row of table at x, one segment per column."""
     bottom = pd.Series(0.0, index=table.index)
     for color, column in zip(colors, table.columns, strict=True):
         ax.bar(x, table[column], bottom=bottom, width=width, color=color, alpha=0.85,
@@ -25,13 +26,17 @@ def _stacked_bars(ax, x, table, colors, width):
 
 
 def plot_cancelling_monthly(monthly_pct, colors, title, filename):
-    """Stacked monthly bars: share of battery flow cancelling out, one segment per column
-    (e.g. within each owner, across owners).
+    """Plot stacked monthly bars of the share of battery flow cancelling out.
 
-    monthly_pct: from fleet_coordination.share_cancelling_out, indexed by month start
-    colors: one colour per column, in column order
+    Args:
+        monthly_pct: From fleet_coordination.share_cancelling_out, indexed by month start; one
+            segment per column.
+        colors: One colour per column, in column order.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, ax).
+    Returns:
+        (fig, ax).
     """
     fig, ax = plt.subplots(figsize=(11, 5))
     _stacked_bars(ax, monthly_pct.index, monthly_pct, colors, width=20)
@@ -52,13 +57,17 @@ def plot_cancelling_monthly(monthly_pct, colors, title, filename):
 
 
 def plot_cancelling_by_hour(hourly_pct, colors, title, filename):
-    """Stacked bars, one per hour of the day: share of battery flow cancelling out, one segment
-    per column (e.g. within each owner, across owners). ESROI shaded behind.
+    """Plot stacked bars by hour of day of the share of battery flow cancelling out, with ESROI shaded.
 
-    hourly_pct: from fleet_coordination.share_cancelling_out, indexed by hour (0-23)
-    colors: one colour per column, in column order
+    Args:
+        hourly_pct: From fleet_coordination.share_cancelling_out, indexed by hour (0-23); one
+            segment per column.
+        colors: One colour per column, in column order.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, ax).
+    Returns:
+        (fig, ax).
     """
     fig, ax = plt.subplots(figsize=(11, 5))
     _stacked_bars(ax, hourly_pct.index + 0.5, hourly_pct, colors, width=0.85)  # bar h spans h:00-h+1:00

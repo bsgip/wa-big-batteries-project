@@ -1,37 +1,6 @@
-"""Parse forecast fields out of every dispatchSolution/predispatchData file
-downloaded by download.py, in a single parallel pass over the corpus.
-
-Same shape as parse_dispatch_solution.py, with one key difference in what a
-file means. A dispatchData file is authoritative for ONE interval, so only
-that interval is kept. A predispatchData file is one forecast run: AEMO runs
-pre-dispatch every 30 minutes (the file's primaryDispatchInterval, also in
-its filename) and each run forecasts 96 half-hour intervals - 48 hours ahead,
-starting at the primary interval itself. Every one of those 96 is the point
-here, so nothing is thrown away.
-
-That gives every row two timestamps:
-
-    primary_dispatch_interval  when the forecast run was made
-    dispatch_interval          the interval being forecast
-
-and any given dispatch_interval is forecast by ~96 different runs. Every
-output is long format, one row per (run, forecast interval, ...) - see
-_finish for why.
-
-Output is produced ONE MONTH AT A TIME (see iter_predispatch_solution_months),
-not as one DataFrame at the end like the other parsers. The corpus is ~53k
-files of ~100MB (~650GB); the energy schedule alone is ~500M rows (~25GB as a
-DataFrame) and price setting up to ~190M more, which doesn't fit in memory in
-one go. catalog.py writes each month to its own temporary parquet and merges
-them into one file per dataset at the end.
-
-Every file has to be parsed end to end (all 96 items are wanted, so there's
-no early exit like dispatch has): ~1.8s CPU per file with every field below,
-so roughly 2.2h on 12 workers.
-
-To add a new field: write a small `_extract_<name>(item) -> list[dict]`
-function (one solutionData item in, that field's rows out), add it to _FIELDS
-with its column dtypes, then add a CATALOG entry in data_extraction/catalog.py.
+"""Parse forecast fields from every predispatchData file: each file is one run forecasting 96 half-hours.
+Long rows with primary_dispatch_interval (the run) and dispatch_interval (the half-hour forecast),
+yielded a month at a time.
 """
 
 import functools
@@ -67,9 +36,14 @@ _TIMESTAMP = "datetime64[us, Australia/Perth]"
 
 
 def _extract_price(item: dict) -> list[dict]:
-    """Forecast clearing price in every market service for the item's
-    interval: energy ($/MWh) and the five FCESS markets. Same columns as
-    price.parquet from parse_dispatch_solution.py."""
+    """Forecast price in energy and the five FCESS markets.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row.
+    """
     prices = item["prices"]
     return [
         {
@@ -85,9 +59,15 @@ def _extract_price(item: dict) -> list[dict]:
 
 
 def _extract_price_setting(item: dict) -> list[dict]:
-    """What set the price in each market service: one row per contribution.
-    A market service with no contributions still gets one row (contribution
-    columns empty), so its isMarketServiceCapped flag isn't lost."""
+    """What set the forecast price in each market service.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per contribution per market service, or one empty row for a service with
+        none (to keep isMarketServiceCapped).
+    """
     rows = []
     for service in item["priceSetting"]:
         base = {
@@ -110,8 +90,7 @@ def _extract_price_setting(item: dict) -> list[dict]:
 
 
 def _extract_dict(key: str):
-    """A flat {name: number} dict on the item (marketShortfalls, dispatchTotal,
-    ...) as one row, its keys kept verbatim as column names."""
+    """Extractor for a flat {name: number} dict on the item (e.g. marketShortfalls), as one row."""
 
     def extract(item: dict) -> list[dict]:
         return [{"dispatch_interval": item["dispatchInterval"], **item[key]}]
@@ -120,9 +99,14 @@ def _extract_dict(key: str):
 
 
 def _extract_projected_level(item: dict) -> list[dict]:
-    """projectedChargeLevel / projectedDischargeLevel per facility, only where
-    at least one isn't None. These keys only exist in files from the 2025-10-30 09:30 run on,
-    and in practice are only ever non-None for batteries."""
+    """projectedChargeLevel / projectedDischargeLevel per facility (runs from 2025-10-30 09:30 on).
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per facility with either value set.
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -137,9 +121,14 @@ def _extract_projected_level(item: dict) -> list[dict]:
 
 
 def _extract_energy_schedule(item: dict) -> list[dict]:
-    """Scheduled energy quantity (MW) per facility from schedule[marketService
-    == "energy"] - every facility in the solve: thermal, wind/solar, batteries
-    (negative = charging) and demand side programmes alike."""
+    """Scheduled energy per facility.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per facility (MW; batteries negative when charging).
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -158,6 +147,7 @@ _KEY_COLUMNS = {"primary_dispatch_interval": _TIMESTAMP, "dispatch_interval": _T
 
 
 def _float_columns(names: list[str]) -> dict[str, str]:
+    """{name: "float64"} for each name."""
     return {name: "float64" for name in names}
 
 
@@ -242,23 +232,17 @@ FIELD_NAMES = list(_FIELDS)
 
 
 def _finish(name: str, rows: list[dict]) -> pd.DataFrame:
-    """Raw rows for one field in, final DataFrame out.
+    """Turn one field's raw rows into its final long DataFrame.
 
-    Long format, both timestamps as plain columns on a RangeIndex - the same
-    way bidstack.parquet is stored. Long rather than wide (one column per
-    forecast step, or per run) because the two natural questions slice it in
-    opposite directions - "what did the run at 14:00 forecast?" filters on
-    primary_dispatch_interval, "how did the forecast for 18:00 evolve?"
-    filters on dispatch_interval - and long format answers both with a plain
-    filter. It also copes with a run that has fewer than 96 items.
+    Keys not in the field's columns are logged, since they would be dropped.
 
-    How far ahead each forecast is (dispatch_interval -
-    primary_dispatch_interval) isn't stored, because it's derived, not
-    extracted - work it out in data_processing.
+    Args:
+        name: Field name in _FIELDS.
+        rows: Raw rows.
 
-    Keys in the JSON that aren't in _FIELDS' column list would be silently
-    dropped, so they're logged - a new key appearing means _FIELDS needs
-    updating."""
+    Returns:
+        Long frame on a RangeIndex with primary_dispatch_interval and dispatch_interval columns.
+    """
     _extract, value_dtypes, extra_sort = _FIELDS[name]
     dtypes = {**_KEY_COLUMNS, **value_dtypes}
 
@@ -278,15 +262,15 @@ def _finish(name: str, rows: list[dict]) -> pd.DataFrame:
 def _get_predispatch_solution_rows(
     path: Path, field_names: list[str]
 ) -> tuple[dict[str, list[dict]], str | None]:
-    """Walk one file (one forecast run), running the requested extractors
-    against every solutionData item in it. Every row is tagged with the run's
-    primary_dispatch_interval, taken from the filename.
+    """Run the requested extractors on every item of one forecast run.
 
-    A file that fails partway through contributes no rows at all, rather than
-    a truncated run that would look like a short forecast horizon.
+    Args:
+        path: predispatchData JSON file.
+        field_names: Names in _FIELDS to run.
 
-    One bad file must never take down the whole run, so failures here are
-    always caught and reported, never raised."""
+    Returns:
+        ({field: rows}, error message or None). A file that fails gives no rows.
+    """
     rows_by_field: dict[str, list[dict]] = {name: [] for name in field_names}
 
     match = _LEADING_TIMESTAMP.match(path.stem)
@@ -313,7 +297,7 @@ def _get_predispatch_solution_rows(
 
 
 def _month_of(path: Path) -> str:
-    """"2025-01" from ReferencePre-DispatchSolution_202501210030.json."""
+    """"YYYY-MM" from a predispatch file name."""
     stamp = path.name[len(_FILE_PREFIX) :]
     return f"{stamp[:4]}-{stamp[4:6]}"
 
@@ -324,17 +308,17 @@ def iter_predispatch_solution_months(
     max_workers: int = 12,
     skip_months: Collection[str] = (),
 ) -> Iterator[tuple[str, dict[str, pd.DataFrame]]]:
-    """Extract the requested fields (default: every field in _FIELDS) from
-    every predispatchData file, or just the runs made on `dates` (e.g.
-    ["2025-01-21"]) if given, yielding (month, {field_name: DataFrame}) one
-    month at a time - months by the forecast run's date, e.g. "2025-01".
+    """Extract fields from every predispatchData file, one month of runs at a time.
 
-    `skip_months` are left out entirely - for resuming a run that died
-    partway, without redoing the months it already wrote.
+    Args:
+        fields: Names in _FIELDS to extract; defaults to all.
+        dates: Only runs made on these days, e.g. ["2025-01-21"] (run sequentially).
+        max_workers: Parallel processes.
+        skip_months: Months ("YYYY-MM") to leave out, e.g. ones already written.
 
-    The full corpus is parsed in parallel across `max_workers` processes. A
-    `dates` subset is ~48 files per day and runs sequentially (~1.8s a file)
-    - useful for exploring a new field before committing to a full walk."""
+    Yields:
+        (month, {field: DataFrame}).
+    """
     field_names = fields if fields is not None else list(_FIELDS)
     unknown = [name for name in field_names if name not in _FIELDS]
     if unknown:

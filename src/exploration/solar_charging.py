@@ -4,13 +4,9 @@
 """
 
 from analysis.energy import daily_energy_mwh, fleet_net_energy_pct
-from tools.constants import commissioning_dates
+from tools.constants import DAYTIME_END, DAYTIME_START, commissioning_dates
 from tools.io import load_clean
 from visualisation.plot_pv_charging import plot_by_season_scatter
-
-# daytime charging window - the midday window soc_features.py uses
-DAYTIME_START = "09:00"
-DAYTIME_END = "15:00"
 
 
 def main():

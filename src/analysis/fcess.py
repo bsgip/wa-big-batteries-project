@@ -1,8 +1,4 @@
-"""FCESS enablement: how much frequency control (FCESS) each battery was enabled to provide.
-
-From fcess_schedule: per dispatch interval, the MW each facility was enabled for in each FCESS market
-(regulation raise/lower, contingency raise/lower, RoCoF - the batteries are never enabled for RoCoF).
-"""
+"""FCESS enablement: the MW each battery was enabled for in each frequency control market."""
 
 from collections.abc import Mapping
 
@@ -14,9 +10,13 @@ BATTERY_SERVICES = ["contingencyRaise", "contingencyLower", "regulationRaise", "
 
 
 def enabled_mw(codes: list[str]) -> pd.DataFrame:
-    """Per interval, MW enabled in each of BATTERY_SERVICES, summed over the given batteries.
+    """MW enabled in each FCESS service, summed over batteries.
 
-    A battery with no row in an interval counts as 0 MW enabled.
+    Args:
+        codes: Battery codes to sum.
+
+    Returns:
+        One row per interval, one column per BATTERY_SERVICES entry; 0 where a battery has no row.
     """
     schedule = load("fcess_schedule", filters=[("code", "in", codes)])
     enabled = schedule.pivot_table(index=schedule.index, columns="market_service", values="quantity", aggfunc="sum")
@@ -24,9 +24,14 @@ def enabled_mw(codes: list[str]) -> pd.DataFrame:
 
 
 def mean_by_window(df: pd.DataFrame | pd.Series, windows: Mapping[str, tuple[str, str]]) -> pd.DataFrame:
-    """Average of df over the intervals in each window of the day (windows may wrap past midnight).
+    """Average of df over each window of the day (windows may wrap past midnight).
 
-    windows: {label: (start, end)}, e.g. energy.DAY_WINDOWS - one row each, in that order
+    Args:
+        df: 5-min Series or frame.
+        windows: {label: (start, end)}, e.g. energy.DAY_WINDOWS.
+
+    Returns:
+        One row per window, in the order given.
     """
     return pd.DataFrame({label: df.between_time(start, end, inclusive="left").mean()
                          for label, (start, end) in windows.items()}).T

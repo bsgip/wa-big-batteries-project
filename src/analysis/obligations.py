@@ -1,9 +1,5 @@
 """Do batteries offer their capacity obligation (RCOQ)?
-
-A battery meets its obligation in a dispatch interval by offering (bidding)
-at least its RCOQ as injection. Offered injection is the sum of its positive
-tranche quantities: negative tranches are offers to charge, and adding them
-in would let a charging offer cancel out discharge offered in the same interval.
+Offered injection = sum of positive tranches, so charge offers can't cancel out discharge offers.
 """
 
 import pandas as pd
@@ -16,12 +12,13 @@ SHORTFALL_TOLERANCE_MW = 0.01
 
 
 def offered_injection_mw(codes: list[str] | None = None) -> pd.DataFrame:
-    """Injection (MW) each battery offered per dispatch interval: the sum of its positive tranches,
-    IN-SERVICE and AVAILABLE alike.
+    """MW each battery offered to inject per dispatch interval (sum of its positive tranches).
 
-    NaN where a battery has no offer at all that interval - a gap in the offer data,
-    not an offer of 0.
-    codes: batteries to keep (default: battery_codes)
+    Args:
+        codes: Batteries to keep; defaults to battery_codes.
+
+    Returns:
+        One row per interval, one MW column per battery; NaN where the battery made no offer.
     """
     codes = battery_codes if codes is None else codes
     bids = load("bidstack", columns=["dispatch_interval", "code", "quantity"])
@@ -37,10 +34,15 @@ def offered_injection_mw(codes: list[str] | None = None) -> pd.DataFrame:
 
 
 def below_rcoq(offered: pd.DataFrame, rcoq: pd.DataFrame, tolerance: float = SHORTFALL_TOLERANCE_MW) -> pd.DataFrame:
-    """True where a battery has an obligation (RCOQ > 0), made an offer, and offered less than its RCOQ.
+    """Flag intervals where a battery offered less than its RCOQ.
 
-    offered: from offered_injection_mw
-    rcoq: load_clean("rcoq"), same columns and interval index
+    Args:
+        offered: Offered injection (MW), from offered_injection_mw.
+        rcoq: RCOQ (MW), same index and columns, from load_clean("rcoq").
+        tolerance: MW below RCOQ still counted as meeting it.
+
+    Returns:
+        Boolean frame: True where RCOQ > 0, an offer exists, and offered < RCOQ - tolerance.
     """
     offered = offered.reindex(index=rcoq.index, columns=rcoq.columns)
     return (rcoq > 0) & offered.notna() & (offered < rcoq - tolerance)

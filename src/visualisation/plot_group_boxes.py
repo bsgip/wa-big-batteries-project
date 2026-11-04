@@ -9,15 +9,20 @@ from tools.seasons import SEASONS, season_of
 
 
 def plot_two_groups_by_season(values, in_group, group_labels, colors, ylabel, title, filename, whis=(10, 90)):
-    """Per season, one box for days in a group and one for the rest, side by side.
+    """Plot, per season, one box for days in a group and one for the other days.
 
-    values: daily Series to draw the boxes of
-    in_group: daily bool Series, True for days in the group (e.g. high-demand days)
-    group_labels: (label for the group, label for the rest)
-    colors: (colour for the group, colour for the rest)
-    whis: whisker percentiles (default 10th-90th, as in period_box_plot); days beyond are dots
+    Args:
+        values: Daily values.
+        in_group: Daily booleans, True for days in the group (e.g. high-demand days).
+        group_labels: (label for the group, label for the rest).
+        colors: (colour for the group, colour for the rest).
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        whis: Whisker percentiles; days beyond are drawn as dots.
 
-    Returns (fig, ax, summary) - summary has each season's day count and median per group.
+    Returns:
+        (fig, ax, summary), where summary has each season's day count and median per group.
     """
     data = pd.concat([values.rename("value"), in_group.rename("in_group")], axis=1).dropna()
     data["in_group"] = data["in_group"].astype(bool)
@@ -69,14 +74,18 @@ def plot_two_groups_by_season(values, in_group, group_labels, colors, ylabel, ti
 
 
 def plot_panels_by_group(panels, groups, order, title, filename, whis=(10, 90)):
-    """One panel per measure, side by side; in each, one box per group of days.
+    """Plot one panel per measure, each with one box per group of days.
 
-    panels: [(daily Series, y-axis label, colour), ...], drawn left to right
-    groups: daily Series of group labels (e.g. a price band), same days as the panels
-    order: group labels, left to right - each labelled with its day count
-    whis: whisker percentiles (default 10th-90th, as in period_box_plot); days beyond are dots
+    Args:
+        panels: [(daily Series, y-axis label, colour), ...], drawn left to right.
+        groups: Group label per day (e.g. a price band), same days as the panels.
+        order: Group labels, left to right.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        whis: Whisker percentiles; days beyond are drawn as dots.
 
-    Returns (fig, axes, summary) - summary has each group's day count and each measure's median.
+    Returns:
+        (fig, axes, summary), where summary has each group's day count and each measure's median.
     """
     fig, axes = plt.subplots(1, len(panels), figsize=(4.2 * len(panels), 5), squeeze=False)
     axes = axes[0]

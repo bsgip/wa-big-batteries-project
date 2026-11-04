@@ -9,16 +9,20 @@ from tools.plot_style import save_figure
 
 def plot_soc_moments_stress_vs_other(soc_pct, stress_days, moments, title, filename,
                                      stress_color="tab:red", whis=(10, 90)):
-    """One panel per definition: fleet SOC at a few moments of the day - a box for all other
-    days at each moment, and each stress day as a dot on top of it.
+    """Plot fleet SOC at a few moments of the day: boxes for other days, stress days as dots.
 
-    soc_pct: fleet SOC (%), 5-min
-    stress_days: {definition label: DatetimeIndex of stress days (midnight)} - days outside soc_pct are ignored
-    moments: {label: "HH:MM"}, e.g. {"Midday\n12:00": "12:00", ...}, drawn left to right
-    whis: whisker percentiles for the other-days boxes (default 10th-90th, as in period_box_plot)
+    Args:
+        soc_pct: 5-min fleet SOC (%).
+        stress_days: {definition label: DatetimeIndex of stress days}; one panel each.
+        moments: {label: "HH:MM"}, drawn left to right.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        stress_color: Colour of the stress-day dots.
+        whis: Whisker percentiles for the boxes.
 
-    Returns (fig, axes, summary) - summary has, per definition and moment, the median SOC
-    on stress days and on other days.
+    Returns:
+        (fig, axes, summary), where summary has the median SOC on stress and other days per
+        definition and moment.
     """
     at = {label: soc_pct.at_time(t).set_axis(soc_pct.at_time(t).index.normalize()) for label, t in moments.items()}
 

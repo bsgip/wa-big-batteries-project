@@ -7,14 +7,20 @@ from tools.seasons import SEASON_BY_MONTH, SEASON_GROUPS, season_group_of
 
 
 def first_start_per_day(starts: pd.Series) -> pd.DatetimeIndex:
-    """One timestamp per stress day: the start of that day's first event."""
+    """Start of each stress day's first event, one per day."""
     idx = pd.DatetimeIndex(starts)
     return pd.DatetimeIndex(pd.Series(idx, index=idx.normalize()).groupby(level=0).min())
 
 
 def stress_days_by_season_hour(starts: pd.Series) -> pd.DataFrame:
-    """Count of stress days per season group (rows: Summer / Shoulder / Winter, most days first)
-    and start hour of the day's first event (columns 0-23)."""
+    """Count stress days by season group and the start hour of each day's first event.
+
+    Args:
+        starts: Event start times.
+
+    Returns:
+        One row per season group (most days first), one column per hour (0-23).
+    """
     days = first_start_per_day(starts)
     groups = pd.MultiIndex.from_arrays([season_group_of(days), days.hour])
     counts = pd.Series(1, index=groups).groupby(level=[0, 1]).sum()
@@ -26,16 +32,15 @@ def stress_days_by_season_hour(starts: pd.Series) -> pd.DataFrame:
 
 
 def plot_stress_days_by_season_hour(definitions, title, filename):
-    """One heatmap per definition: stress days counted by season group (rows, autumn and
-    spring together as shoulder, most days at the top) and the start hour of the day's
-    first event (columns), the count written in every non-empty cell.
+    """Plot one heatmap per definition of stress days by season group x start hour, each on its own scale.
 
-    definitions: {panel label: Series of event start times}
+    Args:
+        definitions: {panel label: event start times}.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Each panel has its own colour scale - the definitions give very different
-    numbers of stress days, so a shared one would leave the smaller ones blank.
-
-    Returns (fig, axes, tables) - tables is {panel label: season group x hour counts}.
+    Returns:
+        (fig, axes, tables), where tables is {panel label: stress_days_by_season_hour table}.
     """
     n = len(definitions)
     fig, axes = plt.subplots(n, 1, figsize=(12, 2.1 * n + 1), sharex=True, squeeze=False)
@@ -81,13 +86,15 @@ SEASON_FREQ = "QS-DEC"
 
 
 def stress_days_by_season(starts: pd.Series, coverage: tuple) -> pd.DataFrame:
-    """Stress days per season for one definition, over the seasons its source covers.
+    """Count stress days per season, over the seasons a definition's source covers.
 
-    starts: event start times; a stress day is a date with at least one event starting
-    coverage: (first, last) time the definition's source covers
+    Args:
+        starts: Event start times; a stress day has at least one event starting.
+        coverage: (first, last) time the source covers.
 
-    Returns one row per covered season (indexed by season start), with
-    days (number of stress days) and covered (share of the season's days the source covers).
+    Returns:
+        One row per covered season (indexed by season start): days and covered (share of the
+        season's days covered).
     """
     first, last = (pd.Timestamp(t).normalize() for t in coverage)
     covered_days = pd.Series(1, index=pd.date_range(first, last, freq="D"))
@@ -101,14 +108,18 @@ def stress_days_by_season(starts: pd.Series, coverage: tuple) -> pd.DataFrame:
 
 
 def plot_stress_days_by_season(definitions, coverage, title, filename):
-    """Number of stress days per season, one bar panel per definition on a shared season axis.
+    """Plot stress days per season, one bar panel per definition on a shared season axis.
 
-    definitions: {label: Series of event start times}
-    coverage: {label: (first, last)} - the period each definition's source covers.
-        Seasons it doesn't cover get "no data" instead of a bar, so they never read
-        as seasons with no stress days.
+    Seasons outside a source's coverage show "no data".
 
-    Returns (fig, axes, tables) - tables is {label: stress_days_by_season(...)}.
+    Args:
+        definitions: {label: event start times}.
+        coverage: {label: (first, last)} period each source covers.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+
+    Returns:
+        (fig, axes, tables), where tables is {label: stress_days_by_season table}.
     """
     tables = {label: stress_days_by_season(starts, coverage[label]) for label, starts in definitions.items()}
 

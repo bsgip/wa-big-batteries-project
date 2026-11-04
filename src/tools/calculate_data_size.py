@@ -1,9 +1,6 @@
-"""Recursively size up the entire AEMO wemde/ directory tree, printing one
-line per directory (the total size of the files directly inside it, parsed
-from the <pre> IIS listing) and a grand total at the end.
+"""Print the size of each directory in AEMO's wemde/ tree, and the total.
 
-Usage:
-    python -m wem_data.calculate_data_size
+    python -m tools.calculate_data_size
 """
 
 import re
@@ -21,6 +18,7 @@ LISTING_ROW_RE = re.compile(
 
 
 def fetch_listing_text(url: str) -> str:
+    """Text of the <pre> block of an IIS directory listing page."""
     resp = session.get(url, timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.content, "html.parser")
@@ -31,13 +29,19 @@ def fetch_listing_text(url: str) -> str:
 
 
 def parse_file_sizes(listing_text: str) -> dict[str, int]:
-    """Return {filename: size_in_bytes} parsed from an IIS directory listing."""
+    """{filename: size in bytes} from an IIS directory listing."""
     return {m["name"]: int(m["size"]) for m in LISTING_ROW_RE.finditer(listing_text)}
 
 
 def walk_directory_sizes(url: str) -> int:
-    """Recurse through the directory tree rooted at `url`, printing each
-    directory's own file total, and return the grand total in bytes."""
+    """Print the total size of the files in each directory under url, recursively.
+
+    Args:
+        url: Root directory URL.
+
+    Returns:
+        Grand total in bytes.
+    """
     subdirs, _files = list_directory(url)
     own_total = sum(parse_file_sizes(fetch_listing_text(url)).values())
 

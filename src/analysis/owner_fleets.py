@@ -16,12 +16,16 @@ def owner_fleet_soc_pct(
     commissioning: dict[str, pd.Timestamp],
     owners: dict[str, list[str]] | None = None,
 ) -> pd.DataFrame:
-    """Fleet SOC (%) per owner, one column per owner, worked out like the whole-fleet fleet_soc_pct.
+    """Fleet SOC per owner, computed the same way as the whole-fleet fleet_soc_pct.
 
-    soc: clean SOC frame (per-battery MWh columns)
-    commissioning: from constants.commissioning_dates on the FULL history, so a battery that
-        isn't reporting at the start of soc still counts toward capacity
-    owners: {owner: [battery codes]} (default: OWNER_BATTERIES)
+    Args:
+        soc: Clean SOC frame (per-battery MWh columns).
+        commissioning: {code: commissioning timestamp}, from constants.commissioning_dates on
+            the full history, so batteries not reporting yet still count toward capacity.
+        owners: {owner: [battery codes]}; defaults to OWNER_BATTERIES.
+
+    Returns:
+        One row per interval, one SOC % column per owner.
     """
     owners = OWNER_BATTERIES if owners is None else owners
     out = {}

@@ -1,11 +1,4 @@
-"""Time-of-day plots: what a typical day looks like for a series, as a fan
-chart (median + percentile bands) or a box plot per hour.
-
-Both work on a list of `(panel_title, series)` pairs, one panel per entry,
-so they're not tied to per-battery data - a single system-wide series like
-demand is just a one-panel list. The plot_soc_* wrappers build that list
-from the `<code><suffix>` columns of a wide battery frame.
-"""
+"""Time-of-day plots (fan charts and hourly box plots), one panel per (title, series) pair."""
 
 import math
 
@@ -23,12 +16,14 @@ Panel = tuple[str, pd.Series]
 
 
 def _grid_shape(n: int) -> tuple[int, int]:
+    """(rows, cols) of the most square grid that fits n panels."""
     cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
     return rows, cols
 
 
 def _time_str_to_hour(t: str) -> float:
+    """"HH:MM" as hours after midnight."""
     hour, minute = t.split(":")
     return int(hour) + int(minute) / 60
 
@@ -52,6 +47,7 @@ _NO_NET_BOX_COLOR = "lightgrey"
 
 
 def _signed_box_color(median: float) -> str:
+    """Discharge colour for a positive median, charge colour for negative, grey for 0 or NaN."""
     if pd.isna(median) or median == 0:
         return _NO_NET_BOX_COLOR
     return DISCHARGE_COLOR if median > 0 else CHARGE_COLOR
@@ -70,6 +66,7 @@ _DENSE_FLIERPROPS = {
 
 
 def _lookback_slice(data: pd.Series | pd.DataFrame, lookback_days: int | None):
+    """The last lookback_days of data (all of it if None)."""
     if lookback_days is None:
         return data
     cutoff = data.index.max() - pd.Timedelta(days=lookback_days)
@@ -77,9 +74,15 @@ def _lookback_slice(data: pd.Series | pd.DataFrame, lookback_days: int | None):
 
 
 def battery_panels(df: pd.DataFrame, column_suffix: str) -> list[Panel]:
-    """One panel per battery, reading the `<code><column_suffix>` column of a
-    wide frame. Batteries with no such column still get a (blank) panel, so
-    the grid layout stays the same whichever batteries are present."""
+    """Build one (code, series) panel per battery from a wide frame.
+
+    Args:
+        df: Wide frame with a <code><column_suffix> column per battery.
+        column_suffix: Column suffix, e.g. "_soc_pct".
+
+    Returns:
+        One panel per battery in battery_codes; the series is empty where the column is missing.
+    """
     panels = []
     for code in battery_codes:
         col = f"{code}{column_suffix}"
@@ -89,14 +92,13 @@ def battery_panels(df: pd.DataFrame, column_suffix: str) -> list[Panel]:
 
 
 def _hour_of_day_frame(series: pd.Series, by_hour_bin: bool) -> pd.DataFrame:
-    """Long (hour, value) frame with NaNs dropped. `by_hour_bin` rounds to
-    the whole hour (box plots, 24 groups); otherwise the full 5-min-of-day
-    resolution is kept (fan charts)."""
+    """Long (hour, value) frame without NaNs; by_hour_bin rounds to the whole hour."""
     hour = series.index.hour if by_hour_bin else series.index.hour + series.index.minute / 60
     return pd.DataFrame({"hour": hour, "value": series.to_numpy()}).dropna()
 
 
 def _finish_grid(fig, axes, n_panels: int, title: str, filename: str, extra_handles=None):
+    """Hide unused panels, add the shared legend and title, and save to filename."""
     for i in range(n_panels, axes.size):
         axes.flat[i].set_visible(False)
 
@@ -121,13 +123,16 @@ def draw_timeofday_box(
     flierprops: dict | None = None,
     signed_colors: bool = False,
 ):
-    """Draw one box per hour of day for series on ax, with the Peak ESROI window shaded.
+    """Draw one box per hour of day for series on ax, with the Peak ESROI shaded.
 
-    lookback_days: only use the last N days (None = all data)
-    whis: whisker percentiles (default 5th-95th)
-    showfliers: draw the points outside the whiskers
-    flierprops: override how those points look
-    signed_colors: colour each box red/blue by the sign of its median (for power)
+    Args:
+        ax: Axes to draw on.
+        series: 5-min values.
+        lookback_days: Only use the last N days; None uses all.
+        whis: Whisker percentiles.
+        showfliers: Draw the points outside the whiskers.
+        flierprops: Style of those points; None for the default.
+        signed_colors: Colour each box by the sign of its median (for power).
     """
     ax.axvspan(
         _PEAK_START_HOUR,
@@ -188,7 +193,16 @@ def plot_timeofday_box(
     legend_loc: str = "upper left",
     **box_kwargs,
 ):
-    """One time-of-day box plot for a single series. box_kwargs go to draw_timeofday_box."""
+    """Plot a time-of-day box plot for one series.
+
+    Args:
+        series: 5-min values.
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        legend_loc: Legend position.
+        **box_kwargs: Passed to draw_timeofday_box.
+    """
     fig, ax = plt.subplots(figsize=(10, 5))
     draw_timeofday_box(ax, series, **box_kwargs)
 
@@ -209,10 +223,14 @@ def plot_timeofday_box_grid(
     filename: str,
     **box_kwargs,
 ):
-    """Grid of time-of-day box plots, one panel per (panel title, series) pair.
+    """Plot a grid of time-of-day box plots, one panel per series.
 
-    panels: e.g. [("System demand", demand), ("Price", price)]
-    box_kwargs: passed to draw_timeofday_box (lookback_days, signed_colors, ...)
+    Args:
+        panels: [(panel title, series), ...], e.g. [("System demand", demand)].
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        **box_kwargs: Passed to draw_timeofday_box.
     """
     rows, cols = _grid_shape(len(panels))
     fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), squeeze=False)
@@ -235,7 +253,17 @@ def plot_soc_timeofday_box_grid(
     lookback_days: int | None = None,
     **box_kwargs,
 ):
-    """One box plot per battery, from the `<code><column_suffix>` columns."""
+    """Plot a time-of-day box plot per battery.
+
+    Args:
+        df: Wide frame with a <code><column_suffix> column per battery.
+        column_suffix: Column suffix, e.g. "_soc_pct".
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        lookback_days: Only use the last N days; None uses all.
+        **box_kwargs: Passed to draw_timeofday_box.
+    """
     plot_timeofday_box_grid(
         battery_panels(df, column_suffix), ylabel, title, filename,
         lookback_days=lookback_days, **box_kwargs,

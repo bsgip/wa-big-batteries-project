@@ -1,5 +1,8 @@
-from jupyter_client.session import utc
-from tracemalloc import start
+"""Perth hourly temperature from Open-Meteo -> clean/5min_temperature.parquet.
+
+    python -m data_extraction.weather
+"""
+
 import openmeteo_requests
 
 import pandas as pd
@@ -11,6 +14,11 @@ from tools.io import save_clean
 
 def get_hourly_temperature():
     # Setup the Open-Meteo API client with cache and retry on error
+	"""Download hourly Perth temperature (2023-01-01 to 2026-09-01) from the Open-Meteo archive.
+
+	Returns:
+	    A temperature column (°C), indexed by Perth time.
+	"""
 	cache_session = requests_cache.CachedSession('.cache', expire_after = -1)
 	retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
 	openmeteo = openmeteo_requests.Client(session = retry_session)
@@ -64,7 +72,11 @@ def get_hourly_temperature():
 
 
 def five_minutely_temperature(hourly):
-    """Interpolate hourly temperature to 5-min and save it as clean/5min_temperature.parquet."""
+    """Interpolate hourly temperature to 5-min and save it as clean/5min_temperature.parquet.
+
+    Args:
+        hourly: From get_hourly_temperature.
+    """
     res = hourly.resample("5min").interpolate("linear")
     save_clean("5min_temperature", res)
 

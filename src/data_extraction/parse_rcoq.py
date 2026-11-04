@@ -1,8 +1,5 @@
-"""Reserve Capacity Obligation Quantities (RCOQ) for every facility, from AEMO's monthly CSVs in data/rcoq/.
-
-The files have one row per facility (component) per 30-min trading interval, with the RCOQ for each of
-its six 5-min dispatch intervals in "Rcoq DI1" (HH:00 / HH:30) ... "Rcoq DI6" (HH:25 / HH:55).
-"Rcoq" is the final value (clause 4.12.4); "Stem Rcoq" is the day-ahead estimate and is not used.
+"""RCOQ per facility from AEMO's monthly CSVs in data/rcoq/.
+Uses "Rcoq DI1".."DI6" (the final values for each 5-min interval), not the day-ahead "Stem Rcoq".
 """
 
 import glob
@@ -16,14 +13,21 @@ DI_COLUMNS = [f"Rcoq DI{i}" for i in range(1, 7)]
 
 
 def load_raw(folder=rcoq_dir) -> pd.DataFrame:
-    """All monthly RCOQ files in folder, stacked."""
+    """All monthly RCOQ CSVs in folder, stacked."""
     columns = ["Facility Code", "Trading Interval"] + DI_COLUMNS
     files = sorted(glob.glob(str(folder / "*.csv")))
     return pd.concat([pd.read_csv(f, usecols=columns) for f in files], ignore_index=True)
 
 
 def to_5min(raw: pd.DataFrame) -> pd.DataFrame:
-    """Raw RCOQ rows -> one MW column per facility on a 5-min dispatch_interval index (Australia/Perth)."""
+    """Reshape raw RCOQ rows onto a 5-min index.
+
+    Args:
+        raw: From load_raw.
+
+    Returns:
+        One MW column per facility, indexed by dispatch_interval (Perth time).
+    """
     long = raw.melt(id_vars=["Facility Code", "Trading Interval"], value_vars=DI_COLUMNS,
                     var_name="di", value_name="rcoq_mw")
 

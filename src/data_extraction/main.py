@@ -1,10 +1,6 @@
-"""Extract fields out of the raw WEMDE JSON into data/processed_data/extracted/.
+"""Extract fields from the raw WEMDE JSON into data/processed_data/extracted/.
+Existing datasets are skipped unless refresh=True.
 
-Each extract() call walks one corpus once, however many fields it's given.
-Datasets that already exist are skipped unless refresh=True. Cleaning happens
-separately, in data_processing/main.py.
-
-Usage:
     python -m data_extraction.main
 """
 

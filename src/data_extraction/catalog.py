@@ -1,26 +1,6 @@
-"""The named datasets this project extracts, and how to get at them.
-
-Two operations, deliberately kept under separate names because they cost
-wildly different amounts:
-
-    extract(...)  walks the raw JSON corpus and writes extracted/<name>.parquet.
-                  Expensive (~45min for dispatchSolution, ~70GB of reads for
-                  caseInputData) and essentially a one-time job per field.
-
-    load(name)    reads extracted/<name>.parquet. Cheap, and NEVER extracts -
-                  if the file isn't there it says so instead of silently
-                  starting a 45-minute walk.
-
-predispatchData datasets are too big to build in memory in one go, so they're
-built a month at a time into a temporary extracted/<name>.partial/ folder
-(gitignored) and merged into extracted/<name>.parquet at the end - see
-_extract_monthly. The end result is one file like every other dataset.
-
-extracted/ holds literally what came out of the JSON. Cleaning and derived
-columns live in data_processing/, which reads these and writes clean/.
-
-To add a new field: register an extractor in the relevant parse_*.py module,
-then add one entry here.
+"""The named datasets this project extracts.
+extract() walks the raw JSON and writes extracted/<name>.parquet (slow, one-time).
+load() reads it, and never extracts.
 """
 
 import logging
@@ -201,18 +181,21 @@ CATALOG: dict[str, Dataset] = {
 
 
 def _build_case_input(fields: list[str], dates: list[str] | None, max_workers: int):
+    """Builder for caseInputData fields; raises ValueError if dates is given (no per-day option)."""
     if dates is not None:
         raise ValueError("caseInputData has no date fast path - omit dates for these fields")
     return parse_case_input.build_case_input_data(fields=fields, max_workers=max_workers)
 
 
 def _build_dispatch_solution(fields: list[str], dates: list[str] | None, max_workers: int):
+    """Builder for dispatchSolution/dispatchData fields."""
     return parse_dispatch_solution.build_dispatch_solution_data(
         fields=fields, dates=dates, max_workers=max_workers
     )
 
 
 def _build_rcoq(fields: list[str], dates: list[str] | None, max_workers: int):
+    """Builder for RCOQ (fields, dates and max_workers are ignored)."""
     return parse_rcoq.build_rcoq_data()
 
 
@@ -237,9 +220,7 @@ _FIELD_NAMES = {
 
 
 def _validate_catalog() -> None:
-    """Fail at import rather than at extraction time. A typo in a source or
-    field name would otherwise only surface once someone had already kicked
-    off a multi-hour walk."""
+    """Raise at import if a CATALOG entry names an unknown source or field."""
     for name, dataset in CATALOG.items():
         if dataset.source not in _FIELD_NAMES:
             raise ValueError(f"{name}: unknown source {dataset.source!r}; expected one of {list(_FIELD_NAMES)}")
@@ -252,16 +233,19 @@ _validate_catalog()
 
 
 def _dataset(name: str) -> Dataset:
+    """The CATALOG entry for name; raises ValueError listing the known names."""
     if name not in CATALOG:
         raise ValueError(f"unknown dataset {name!r}; expected one of {list(CATALOG)}")
     return CATALOG[name]
 
 
 def extracted_path(name: str):
+    """Path of extracted/<file> for dataset name."""
     return extracted_data_dir / _dataset(name).filename
 
 
 def is_extracted(name: str) -> bool:
+    """Whether dataset name has been extracted."""
     return extracted_path(name).exists()
 
 
@@ -271,12 +255,19 @@ def list_datasets() -> list[tuple[str, str, bool]]:
 
 
 def load(name: str, **read_parquet_kwargs) -> pd.DataFrame:
-    """Read one extracted dataset. Never extracts - see this module's docstring.
+    """Read one extracted dataset. Never extracts.
 
-    Extra keyword arguments go to pd.read_parquet - worth using on the big
-    predispatch datasets to avoid reading all of one into memory, e.g.
-    load("predispatch_energy_schedule", filters=[("code", "in", battery_codes)])
-    or columns=[...]."""
+    Args:
+        name: Dataset name in CATALOG, e.g. "price".
+        **read_parquet_kwargs: Passed to pd.read_parquet, e.g. columns=[...] or
+            filters=[("code", "in", battery_codes)] to read part of a big dataset.
+
+    Returns:
+        The dataset.
+
+    Raises:
+        FileNotFoundError: If it hasn't been extracted.
+    """
     path = extracted_path(name)
     if not path.exists():
         raise FileNotFoundError(f"{name} not extracted yet ({path} doesn't exist) - run extract([{name!r}])")
@@ -284,24 +275,27 @@ def load(name: str, **read_parquet_kwargs) -> pd.DataFrame:
 
 
 def load_many(names: list[str]) -> dict[str, pd.DataFrame]:
+    """{name: load(name)} for each name."""
     return {name: load(name) for name in names}
 
 
 def extract(
     names: list[str], *, dates: list[str] | None = None, refresh: bool = False, max_workers: int = 12
 ) -> dict[str, pd.DataFrame]:
-    """Walk the raw corpus for `names` and write extracted/<name>.parquet.
+    """Walk the raw files and write extracted/<name>.parquet for each name.
 
-    Names are grouped by source, so asking for several fields from the same
-    corpus walks it ONCE. Names already extracted are skipped unless
-    `refresh` - a guard against accidentally redoing a one-time job, not a
-    cache optimisation.
+    Names from the same source share one walk. Already-extracted names are skipped unless
+    refresh is True.
 
-    `dates` (e.g. ["2025-01-21"]) restricts dispatchSolution/predispatchData
-    to a handful of files instead of the whole corpus - useful for exploring
-    a new field on a couple of days before committing to the full walk. Results from a `dates` run are
-    NOT written to disk, since they'd be a partial dataset masquerading as a
-    complete one; they're returned for inspection only.
+    Args:
+        names: Dataset names in CATALOG.
+        dates: Only these days, e.g. ["2025-01-21"] (dispatch and predispatch sources);
+            results are returned, not written.
+        refresh: Re-extract names that already exist.
+        max_workers: Parallel processes.
+
+    Returns:
+        {name: DataFrame} for a dates run; otherwise {}.
     """
     for name in names:
         _dataset(name)
@@ -347,24 +341,14 @@ def extract(
 def _extract_monthly(
     source: str, names: list[str], dates: list[str] | None, refresh: bool, max_workers: int
 ) -> dict[str, pd.DataFrame]:
-    """extract() for a source in _MONTHLY_BUILDERS, in two steps:
+    """extract() for monthly sources: each month goes to extracted/<name>.partial/, then all
+    months are merged into extracted/<name>.parquet.
 
-    1. Each month is written to extracted/<name>.partial/<YYYY-MM>.parquet as
-       soon as it's built, so memory only ever holds one month.
-    2. Once every month is done, each .partial/ folder is merged into
-       extracted/<name>.parquet a month at a time (still one month in memory)
-       and the folder deleted. The merged file is written under a .tmp name
-       and renamed at the end, so <name>.parquet only ever exists complete
-       and is_extracted() can't mistake a run that died for a finished one.
+    A run that died resumes from the months already written; refresh=True starts over.
 
-    A run that died partway resumes: months already in EVERY requested
-    dataset's .partial/ folder are skipped. refresh=True throws away any
-    .partial/ folders first and starts over, since a refresh usually means
-    the earlier output was wrong.
-
-    A `dates` run writes nothing and returns the frames concatenated. A full
-    run returns {} - these datasets are too big to hand back in memory; use
-    load(name, filters=...) to read what you need."""
+    Returns:
+        {name: DataFrame} for a dates run; otherwise {}.
+    """
     fields = [CATALOG[name].field for name in names]
     field_to_name = {CATALOG[name].field: name for name in names}
     months = _MONTHLY_BUILDERS[source]
@@ -406,10 +390,7 @@ def _extract_monthly(
 
 
 def _merge_months(partial_dir, final_path) -> None:
-    """Concatenate partial_dir's monthly parquets, in month order, into one
-    parquet at final_path - appending one month at a time rather than reading
-    them all into memory. Every month has the same schema (the parser fixes
-    each field's columns and dtypes), so they append as-is."""
+    """Append partial_dir's monthly parquets, in month order, into one parquet at final_path."""
     month_files = sorted(partial_dir.glob("*.parquet"))
     tmp = final_path.with_suffix(".parquet.tmp")
     with pq.ParquetWriter(tmp, pq.read_schema(month_files[0])) as writer:

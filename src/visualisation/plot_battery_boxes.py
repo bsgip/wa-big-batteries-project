@@ -8,7 +8,7 @@ from tools.plot_style import save_figure
 
 
 def _draw_box(ax, values, x, color, width, whis):
-    """One box at x, 10th-90th whiskers by default, values beyond them as dots."""
+    """Draw one box at x on ax, with whiskers at the whis percentiles and values beyond as dots."""
     ax.boxplot(
         [values.dropna().to_numpy()], positions=[x], widths=width, whis=whis, manage_ticks=False,
         patch_artist=True,
@@ -28,18 +28,22 @@ def _owner_medians(values, owners):
 
 def plot_boxes_by_battery(values, owners, owner_colors, ylabel, title, filename, value_format="${:,.0f}/MWh",
                           whis=(10, 90), ylim=None, zero_line=False):
-    """One box per battery, coloured by owner; each owner's median over all its batteries' values in
-    the legend.
+    """Plot one box per battery, coloured by owner, with each owner's median in the legend.
 
-    values: one column per battery (any frequency) - every non-NaN value goes into that battery's box
-    owners: {owner: [battery codes]}, drawn in that order, owner by owner
-    owner_colors: {owner: colour}
-    value_format: how an owner's median is written in the legend
-    whis: whisker percentiles (default 10th-90th, as in period_box_plot); values beyond are dots
-    ylim: (bottom, top) of the y-axis - dots outside it are cut off (defaults to fitting the data)
-    zero_line: dashed line at 0, e.g. for a gap
+    Args:
+        values: One column per battery (any frequency); every non-NaN value goes into its box.
+        owners: {owner: [battery codes]}, drawn in that order.
+        owner_colors: {owner: colour}.
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        value_format: Format of each owner's median in the legend.
+        whis: Whisker percentiles; values beyond are drawn as dots.
+        ylim: (bottom, top) of the y-axis; None fits the data.
+        zero_line: Draw a dashed line at 0.
 
-    Returns (fig, ax, owner_medians).
+    Returns:
+        (fig, ax, owner_medians), where owner_medians is a Series indexed by owner.
     """
     codes = [code for codes in owners.values() for code in codes]
     owner_of = {code: owner for owner, codes in owners.items() for code in codes}
@@ -74,18 +78,21 @@ def plot_boxes_by_battery(values, owners, owner_colors, ylabel, title, filename,
 
 def plot_window_boxes_by_battery(by_window, window_colors, owners, ylabel, title, filename,
                                  value_format=r"\${:,.0f}/MWh", whis=(10, 90), ylim=None):
-    """Side-by-side boxes per battery, one per window of the day (e.g. ESROI, outside it), coloured
-    by window; each owner's median per window in the legend.
+    """Plot side-by-side boxes per battery, one per window of the day, coloured by window.
 
-    by_window: {window label: one column per battery} - drawn left to right within each battery
-    window_colors: {window label: colour}
-    owners: {owner: [battery codes]}, drawn in that order, owner by owner
-    value_format: how an owner's median is written in the legend ($ escaped: two in one label would
-        otherwise be read as maths)
-    whis: whisker percentiles (default 10th-90th); values beyond are dots
-    ylim: (bottom, top) of the y-axis - dots outside it are cut off (defaults to fitting the data)
+    Args:
+        by_window: {window label: one column per battery}, drawn left to right within each battery.
+        window_colors: {window label: colour}.
+        owners: {owner: [battery codes]}, drawn in that order.
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        value_format: Format of each owner's median in the legend ($ must be escaped).
+        whis: Whisker percentiles; values beyond are drawn as dots.
+        ylim: (bottom, top) of the y-axis; None fits the data.
 
-    Returns (fig, ax, owner_medians) - owner_medians has one row per window, one column per owner.
+    Returns:
+        (fig, ax, owner_medians), where owner_medians has one row per window, one column per owner.
     """
     codes = [code for codes in owners.values() for code in codes]
     owner_of = {code: owner for owner, codes in owners.items() for code in codes}

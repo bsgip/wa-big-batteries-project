@@ -7,8 +7,7 @@ energy price, by season.
 from analysis.energy import fleet_net_energy_pct
 from analysis.price_measures import daily_price_measures
 from data_extraction.catalog import load
-from exploration.solar_charging import DAYTIME_END, DAYTIME_START
-from tools.constants import commissioning_dates
+from tools.constants import DAYTIME_END, DAYTIME_START, commissioning_dates
 from tools.io import load_clean
 from visualisation.plot_pv_charging import plot_by_season_scatter
 

@@ -1,24 +1,11 @@
-"""Download raw WEMDE files for a dataset directory under wemde/, e.g.
-"caseInputData" or "dispatchSolution/dispatchData". Every file from both
-current/ and previous/ lands flattened into raw_dataset_dir(dataset) as .json
-- zips are extracted in memory and discarded, only their .json members are
-kept.
+"""Download raw WEMDE files for a dataset (e.g. caseInputData) into raw_dataset_dir(dataset), unzipped.
+Failed URLs are logged to failed_downloads.txt for --retry-failed.
 
 Usage:
-    python -m wem_data.download caseInputData "dispatchSolution/dispatchData"
-    python -m wem_data.download caseInputData --from-date 2025-01-01 --to-date 2025-01-31
-    python -m wem_data.download caseInputData --retry-failed
-    python -m wem_data.download --dataset caseInputData --url "<file-url>"
-
-Failures (bad zips, network errors) are logged and skipped rather than
-stopping the run, and the failing URL is recorded in
-download_state_dir(dataset)/failed_downloads.txt for later retry via
---retry-failed or --url.
-
---from-date/--to-date filter on the YYYYMMDD date embedded in each listed
-file's name (e.g. "ReferenceDispatchCase_20250115.zip") before anything is
-downloaded. Files whose name doesn't carry a recognisable date are always
-kept, since there's no date to filter them on.
+    python -m data_extraction.download caseInputData "dispatchSolution/dispatchData"
+    python -m data_extraction.download caseInputData --from-date 2025-01-01 --to-date 2025-01-31
+    python -m data_extraction.download caseInputData --retry-failed
+    python -m data_extraction.download --dataset caseInputData --url "<file-url>"
 """
 
 import io
@@ -51,7 +38,14 @@ session.headers.update(HEADERS)
 
 
 def list_directory(url: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Return (subdirs, files) as (name, url) pairs for an IIS listing page."""
+    """List an IIS directory page.
+
+    Args:
+        url: Directory URL.
+
+    Returns:
+        (subdirs, files), each a list of (name, url).
+    """
     resp = session.get(url, timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -73,11 +67,7 @@ _DATE_RE = re.compile(r"_(\d{8})\d*(?:_\d+)?\.\w+$")
 
 
 def _extract_date(name: str) -> date | None:
-    """Pull the leading YYYYMMDD date out of a listed file's name, e.g.
-    "ReferenceDispatchCase_20250115.zip" (previous/, date only) or
-    "ReferenceDispatchCase_202501150800.json" (current/, date+time) ->
-    date(2025, 1, 15). Returns None for names that don't carry a
-    recognisable date."""
+    """The leading YYYYMMDD date in a file name, or None."""
     m = _DATE_RE.search(name)
     if not m:
         return None
@@ -88,6 +78,7 @@ def _extract_date(name: str) -> date | None:
 
 
 def _in_date_range(name: str, start: date | None, end: date | None) -> bool:
+    """Whether a file name's date is within [start, end]; names without a date always are."""
     if start is None and end is None:
         return True
     file_date = _extract_date(name)
@@ -101,10 +92,12 @@ def _in_date_range(name: str, start: date | None, end: date | None) -> bool:
 
 
 def _failed_file(state_dir: Path) -> Path:
+    """Path of the failed-downloads log in state_dir."""
     return state_dir / "failed_downloads.txt"
 
 
 def _record_failure(state_dir: Path, url: str) -> None:
+    """Add url to the failed-downloads log."""
     state_dir.mkdir(parents=True, exist_ok=True)
     path = _failed_file(state_dir)
     existing = path.read_text().splitlines() if path.exists() else []
@@ -114,6 +107,7 @@ def _record_failure(state_dir: Path, url: str) -> None:
 
 
 def _clear_failure(state_dir: Path, url: str) -> None:
+    """Remove url from the failed-downloads log."""
     path = _failed_file(state_dir)
     if not path.exists():
         return
@@ -125,6 +119,7 @@ def _clear_failure(state_dir: Path, url: str) -> None:
 
 
 def _download_plain_file(url: str, dest_path: Path, state_dir: Path, force: bool) -> bool:
+    """Download url to dest_path (skipped if it exists, unless force). Returns True on success."""
     if dest_path.exists() and not force:
         return True
     logger.info(f"downloading {url}")
@@ -147,6 +142,7 @@ def _download_and_extract_zip(url: str, dest_dir: Path, state_dir: Path, force: 
     # a marker file (rather than checking for the extracted file itself) is
     # what lets a re-run skip the download. Kept in state_dir, not dest_dir,
     # so it never sits next to the real .json output.
+    """Download a zip and extract its .json files into dest_dir (skipped if done, unless force). Returns True on success."""
     marker = state_dir / f"{Path(url).name}.done"
     if marker.exists() and not force:
         return True
@@ -174,24 +170,26 @@ def _download_and_extract_zip(url: str, dest_dir: Path, state_dir: Path, force: 
 
 
 def record_corrupted_file(dataset: str, filename: str) -> None:
-    """Record a local file that failed to *parse* (truncated/corrupted -
-    not necessarily a failure download.py itself caught at download time)
-    as a failed download for `dataset`, reusing the same
-    failed_downloads.txt that network-download failures go into, so
-    --retry-failed re-fetches it too. Assumes the file came from the
-    current/ folder (individual per-interval uploads - the failure-prone
-    path for interrupted downloads, unlike previous/'s infrequently-touched
-    zips); a file that actually came from previous/ won't be fixable this
-    way and will just fail the retry again harmlessly."""
+    """Log a file that failed to parse as a failed download, so --retry-failed fetches it again.
+
+    Assumes the file came from current/.
+
+    Args:
+        dataset: Dataset folder, e.g. "caseInputData".
+        filename: Name of the local file.
+    """
     url = f"{ROOT_URL}{dataset}/current/{filename}"
     _record_failure(download_state_dir(dataset), url)
 
 
 def log_and_record_parse_failures(paths: list[Path], errors: list[str | None], dataset: str) -> None:
-    """After a parallel parse of every file in `dataset`, log a one-line
-    summary of any failures and record each one via record_corrupted_file
-    so a later `--retry-failed` run re-downloads and fixes them - one
-    unified recovery path instead of a second, disconnected failure log."""
+    """Log a summary of parse failures and record each with record_corrupted_file.
+
+    Args:
+        paths: Files that were parsed.
+        errors: Error message per file, or None if it parsed.
+        dataset: Dataset folder, e.g. "caseInputData".
+    """
     failed = [(path, error) for path, error in zip(paths, errors, strict=True) if error is not None]
 
     if not failed:
@@ -205,8 +203,16 @@ def log_and_record_parse_failures(paths: list[Path], errors: list[str | None], d
 
 
 def download_file(url: str, dataset: str, force: bool = True) -> bool:
-    """Manually (re)download a single file URL belonging to `dataset`, e.g.
-    to retry one entry from failed_downloads.txt. Returns True on success."""
+    """Download one file URL of a dataset, e.g. to retry an entry in failed_downloads.txt.
+
+    Args:
+        url: File URL.
+        dataset: Dataset folder, e.g. "caseInputData".
+        force: Download even if the file is already there.
+
+    Returns:
+        True on success.
+    """
     dest_dir = raw_dataset_dir(dataset)
     state_dir = download_state_dir(dataset)
     name = Path(url).name
@@ -216,9 +222,7 @@ def download_file(url: str, dataset: str, force: bool = True) -> bool:
 
 
 def retry_failed_downloads(dataset: str) -> None:
-    """Retry every URL previously logged as failed for `dataset`. URLs that
-    succeed are cleared from failed_downloads.txt; URLs that fail again stay
-    logged for another retry."""
+    """Retry every URL logged as failed for dataset; successes are removed from the log."""
     state_dir = download_state_dir(dataset)
     failed_file = _failed_file(state_dir)
     if not failed_file.exists():
@@ -238,12 +242,15 @@ def download_dataset(
     start_date: date | None = None,
     end_date: date | None = None,
 ) -> None:
-    """Download every file under wemde/<dataset>/{folders}/, flattened into
-    raw_dataset_dir(dataset) - current/ and previous/ files land in the same
-    directory since only the extracted .json content matters. `dataset` can
-    be nested, e.g. "dispatchSolution/dispatchData". If start_date/end_date
-    are given, only files whose name carries a YYYYMMDD date within that
-    (inclusive) range are downloaded."""
+    """Download every file under wemde/<dataset>/<folder>/ into raw_dataset_dir(dataset).
+
+    Args:
+        dataset: Dataset folder, e.g. "caseInputData" or "dispatchSolution/dispatchData".
+        folders: Sub-folders to download, e.g. ("current", "previous").
+        force: Download files that are already there.
+        start_date: Only files dated on or after this; None for no limit.
+        end_date: Only files dated on or before this; None for no limit.
+    """
     dest_dir = raw_dataset_dir(dataset)
     state_dir = download_state_dir(dataset)
 

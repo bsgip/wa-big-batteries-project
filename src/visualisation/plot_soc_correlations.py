@@ -1,9 +1,4 @@
-"""SOC against an exogenous variable - temperature to start with - as one
-scatter panel per battery, with a binned-median line and the correlation
-coefficient per panel.
-
-    python -m exploration.variables_correlations
-"""
+"""Per-battery SOC (or power) against an outside variable such as temperature, one scatter panel per battery."""
 
 import logging
 import math
@@ -21,13 +16,12 @@ from visualisation.plot_variables_correlation import binned_stat
 
 
 def load_temperature() -> pd.Series:
-    """5-minutely Perth temperature, in the same timezone as the SOC index."""
+    """5-min Perth temperature, in Perth time."""
     return load_clean("5min_temperature")["temperature"].tz_convert("Australia/Perth")
 
 
 def load_energy_price() -> pd.Series:
-    """5-minute energy market clearing price ($/MWh), from the extracted
-    dispatchSolution data (not case input - see data_extraction/catalog.py)."""
+    """5-min energy price ($/MWh), from the extracted dispatchSolution data."""
     return load("price")["energy_price"]
 
 
@@ -36,6 +30,7 @@ _TIME_COLORS = ["tab:blue", "tab:red", "tab:green", "tab:purple", "tab:orange", 
 
 
 def _grid_shape(n: int) -> tuple[int, int]:
+    """(rows, cols) of the most square grid that fits n panels."""
     cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
     return rows, cols
@@ -60,34 +55,28 @@ def plot_soc_vs(
     zero_line: bool = False,
     max_points: int | None = 20_000,
 ):
-    """Scatter a per-battery quantity against an exogenous variable, one
-    panel per battery. Despite the name it isn't SOC-only - pass the power
-    frame with `column_suffix="_power_pct"` to plot power instead.
+    """Scatter each battery's column against an outside variable, one panel per battery.
 
-    soc_df: wide frame indexed by dispatch interval, with a
-        `<code><column_suffix>` column per battery
-    x_series: Series indexed by timestamp (temperature, price, demand, ...);
-        joined on the index, so it only has to overlap in time
-    at_time: "HH:MM", or a list of them, to restrict to that interval of
-        each day. Pooling all 288 intervals mixes batteries at every
-        point of their daily cycle, which is what flattens these
-        plots; fixing the time holds the cycle constant so what's
-        left is the response to x. With a list, each time gets its
-        own colour and its own summary line in every panel, so the
-        times can be compared directly.
-    bins: default 30, or 12 when `at_time` is set - one interval a day
-        is ~1,000 readings, not ~300,000, so 30 bins would leave too
-        few readings per bin to summarise
-    min_bin_count: default 50, or 15 when `at_time` is set, for the same
-        reason - at the pooled default an at_time line would be
-        blanked entirely
-    bin_method: "width" or "quantile" for the summary line - see bin_edges
-    stat: "median" or "mean" for that line - see binned_stat
-    xscale: optional matplotlib x scale, e.g. "symlog" for a heavy-tailed
-        variable that also goes negative (price), with any extra
-        arguments in `xscale_kwargs` (e.g. {"linthresh": 200})
-    zero_line: draw y=0, for signed quantities like power
-    max_points: subsample per panel for legibility; None keeps everything
+    Works for any per-battery quantity, e.g. power with column_suffix="_power_pct".
+
+    Args:
+        soc_df: Wide frame with a <code><column_suffix> column per battery.
+        x_series: Variable to plot against (temperature, price, ...), joined on the index.
+        x_label: X-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        column_suffix: Column suffix to plot.
+        ylabel: Y-axis label.
+        at_time: "HH:MM" or a list of them, to use only those times of day (one colour and
+            summary line per time); None uses every interval.
+        bins: Bins for the summary line; defaults to 30, or 12 with at_time.
+        min_bin_count: Bins with fewer readings are dropped; defaults to 50, or 15 with at_time.
+        bin_method: "width" or "quantile"; see bin_edges.
+        stat: "median" or "mean"; see binned_stat.
+        xscale: Matplotlib x scale, e.g. "symlog"; extra arguments in xscale_kwargs.
+        xscale_kwargs: Arguments for xscale, e.g. {"linthresh": 200}.
+        zero_line: Draw y = 0.
+        max_points: Points drawn per panel; None draws all.
     """
     d = soc_df.join(x_series.rename("_x"), how="inner")
     if d.empty:
@@ -211,13 +200,7 @@ POWER_KWARGS = {
 
 
 def _plot_pooled_and_by_time(slug: str, **kwargs) -> None:
-    """Every comparison gets both framings, from one set of arguments.
-
-    Pooled uses all 288 intervals a day, which mixes batteries at every
-    point of their daily cycle and flattens most of these relationships -
-    SOC vs demand is r=-0.02 pooled and -0.43 at 16:00. The by-time version
-    holds the cycle constant. Keeping the pair in one call means the two can
-    never drift apart in binning or axis treatment."""
+    """Call plot_soc_vs twice: pooled over every interval, and at fixed times of day."""
     plot_soc_vs(filename=f"{slug}.png", **kwargs)
     plot_soc_vs(filename=f"{slug}_by_time.png", at_time=PEAK_TIMES, **kwargs)
 

@@ -15,7 +15,17 @@ BASELINES = [
 
 
 def forecast_error_scores(df, preds, target="fleet_soc_pct"):
-    """Bias, median error, MAE and RMSE of each forecast column against the target."""
+    """Score each forecast column against the target.
+
+    Args:
+        df: Daily frame holding the forecast columns and the target.
+        preds: Forecast column names (fleet SOC forecasts, in %).
+        target: Column with the actual value.
+
+    Returns:
+        One row per forecast, sorted by MAE, with columns bias, median_err, MAE, RMSE, n
+        and rmse_mae_ratio.
+    """
     err = df[preds].sub(df[target], axis=0).dropna()
 
     scores = pd.DataFrame({
@@ -28,3 +38,22 @@ def forecast_error_scores(df, preds, target="fleet_soc_pct"):
     scores["n"] = len(err)
     scores["rmse_mae_ratio"] = scores["RMSE"] / scores["MAE"]
     return scores
+
+
+def forecast_error_scores_by_day_type(df, flags, preds=BASELINES):
+    """Score each forecast separately for all days, normal days and SSE days.
+
+    Args:
+        df: Daily feature table, e.g. from soc_features.build_feature_table.
+        flags: Frame with a boolean is_sse column on the same index, from sse_events.sse_day_flags.
+        preds: Forecast column names.
+
+    Returns:
+        {"All" | "Normal" | "SSE": forecast_error_scores table}.
+    """
+    subsets = {
+        "All": df,
+        "Normal": df.loc[~flags["is_sse"]],
+        "SSE": df.loc[flags["is_sse"]],
+    }
+    return {day_type: forecast_error_scores(d, preds) for day_type, d in subsets.items()}

@@ -18,6 +18,18 @@ SEQUENTIAL_CMAP = "viridis"  # unsigned 0-100% (SOC)
 # same 0-100% bins on every SOC histogram, so they can be compared
 SOC_BINS = np.linspace(0, 100, 81)  # 1.25% wide
 
+# one colour per technology group (analysis/generation_mix.TECHNOLOGY_GROUPS), shared by the
+# generation/capacity mix and price-setter plots; batteries under both labels used
+TECHNOLOGY_COLORS = {
+    "Coal": "#4D4D4D",
+    "Gas": "#E69F00",
+    "Other (liquid, waste, bioenergy)": "0.75",
+    "Wind": "#56B4E9",
+    "Grid-scale solar": "#F0E442",
+    "Batteries (discharge)": "tab:red",
+    "Batteries": "tab:red",
+}
+
 # one stable colour per battery, reused across every plot type so a given
 # battery is always the same colour regardless of which figure it's in
 _TAB10 = plt.get_cmap("tab10").colors
@@ -54,6 +66,7 @@ SEASON_COLORS = {
 
 
 def save_figure(fig: plt.Figure, path: Path):
+    """Save fig to path (200 dpi, creating the folder if needed) and close it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)

@@ -7,12 +7,18 @@ from tools.seasons import SEASONS, season_of
 
 
 def plot_by_season_scatter(x, y, xlabel, ylabel, title, filename):
-    """One scatter per season (2x2, shared axes), one dot per day, with the season's
-    correlation (Pearson r) between x and y in its panel title.
+    """Plot daily x against y, one panel per season (2x2), with Pearson r in each panel title.
 
-    x, y: daily Series; only days with both are drawn
+    Args:
+        x: Daily values; only days with both x and y are drawn.
+        y: Daily values.
+        xlabel: X-axis label.
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, axes, data) - data has x, y and season per day.
+    Returns:
+        (fig, axes, data), where data has x, y and season per day.
     """
     data = pd.concat([x.rename("x"), y.rename("y")], axis=1).dropna()
     data["season"] = season_of(data.index)

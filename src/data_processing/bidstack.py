@@ -1,10 +1,5 @@
 """Bidstack cleaning: extracted/bidstack.parquet -> clean/bidstack.parquet.
-
-Drops tranches with a placeholder price (submitted ±99,999 $/MWh) - not real offers. They're far
-outside the market price limits (-1,000 to a cap of 738-1,700 $/MWh over the data), and only appear
-in Aug-Nov 2024 (COLLIE_ESR1, KWINANA_ESR1, KWINANA_ESR2).
-
-Indexed by dispatch_interval like the other clean frames (one row per tranche, so repeated).
+Drops the ±99,999 $/MWh placeholder tranches (not real offers; only in Aug-Nov 2024).
 """
 
 import logging
@@ -30,5 +25,12 @@ def drop_placeholder_prices(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process(df: pd.DataFrame) -> pd.DataFrame:
-    """Extracted bidstack -> placeholder prices dropped, indexed by dispatch_interval."""
+    """Clean the extracted bid stack.
+
+    Args:
+        df: Extracted bidstack, one row per (dispatch_interval, code, tranche).
+
+    Returns:
+        The bid stack without placeholder-price tranches, indexed by dispatch_interval.
+    """
     return drop_placeholder_prices(df).set_index("dispatch_interval").sort_index()

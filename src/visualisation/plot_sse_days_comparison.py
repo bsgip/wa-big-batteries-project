@@ -1,13 +1,4 @@
-"""Rewritten diagnostic/analysis plots: a 4-panel single-axis-per-metric day
-view, a headroom (stored vs required energy) view that carries the adequacy
-argument, and a whole-record entry-energy adequacy scatter.
-
-Reuses the same datasets and cleaning already in this repo (see
-data_extraction/catalog.py, data_processing/soc.py) rather than inventing a
-new schema. Keeps
-plot_heatmap.py/plot_distributions.py/plot_soc.py untouched - this is an
-addition, not a replacement.
-"""
+"""Plots for single SSE days: SOC, power, demand and price for the day, the week before, and battery bid stacks."""
 
 from collections.abc import Callable
 
@@ -35,12 +26,9 @@ _capacity_cache: dict[str, float] | None = None
 def _gap_missing_telemetry(
     s: pd.Series, zero_minutes: int = 30, frozen_minutes: int = 60, freq_minutes: int = 5
 ) -> pd.Series:
-    """A SCADA feed stuck at exactly 0, or stuck at any other constant
-    value for a long stretch, is almost certainly missing/frozen telemetry
-    rather than a real reading (an empty battery doesn't usually sit dead
-    flat at 0.000 for hours). Runs of exact zero longer than `zero_minutes`,
-    or runs of ANY constant value longer than `frozen_minutes`, get gapped
-    to NaN so the line breaks instead of drawing a fake flat segment."""
+    """Set stuck telemetry to NaN: runs of exact 0 longer than zero_minutes, and runs of any
+    constant value longer than frozen_minutes.
+    """
     s = s.copy()
     zero_run_len = max(1, round(zero_minutes / freq_minutes))
     frozen_run_len = max(1, round(frozen_minutes / freq_minutes))
@@ -56,10 +44,7 @@ def _gap_missing_telemetry(
 
 
 def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
-    """Read the extracted SOC/demand/power/price datasets and lightly clean
-    the SOC. Never triggers extraction - if something hasn't been extracted
-    yet, load_many says so (run data_extraction/main.py). Cached in-process so
-    a batch of plot calls only loads once."""
+    """Load SOC, power, demand and price (stuck SOC readings removed), cached for the session."""
     cache_key = (zero_minutes, frozen_minutes)
     if _data_cache.get("_key") == cache_key:
         return _data_cache["soc"], _data_cache["power"], _data_cache["demand"], _data_cache["price"]
@@ -84,10 +69,7 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
 
 
 def _get_soc_capacity() -> dict[str, float]:
-    """Same empirically-derived-from-observed-max capacity data_processing
-    uses for the SOC % columns (see data_processing/soc.py) - not the documented
-    battery_capacity_MWh, which has been wrong before (KWINANA_ESR2).
-    Cached in-process since it requires the full record's SOC data."""
+    """Capacity (MWh) per unit from the observed max SOC; cached."""
     global _capacity_cache
     if _capacity_cache is None:
         soc_df, _, _, _ = _load_data()
@@ -96,18 +78,21 @@ def _get_soc_capacity() -> dict[str, float]:
 
 
 def _style_axes(ax: plt.Axes):
+    """Hide the top and right spines and add a light grid."""
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(True, alpha=0.25, linewidth=0.6)
 
 
 def _shade_peak_esroi(ax: plt.Axes, day: str, tz):
+    """Shade the Peak ESROI window of day on ax."""
     start = pd.Timestamp(f"{day} {PEAK_ESROI_START}", tz=tz)
     end = pd.Timestamp(f"{day} {PEAK_ESROI_END}", tz=tz)
     ax.axvspan(start, end, color="gold", alpha=0.15, zorder=0)
 
 
 def _slice_day(data: pd.DataFrame | pd.Series, day: str):
+    """Rows of data on day, or None if there are none."""
     try:
         sliced = data.loc[day]
     except KeyError:
@@ -116,12 +101,17 @@ def _slice_day(data: pd.DataFrame | pd.Series, day: str):
 
 
 def _draw_day_panels(axes, day: str, soc_unit: str, units: list[str]):
-    """Draw stored energy / power / demand / price for one day onto the
-    given (ax_soc, ax_power, ax_demand, ax_price) axes - the shared core of
-    plot_day and plot_day_comparison, so a single-day figure and a
-    side-by-side comparison figure never draw a panel two different ways.
-    Returns the day's tz, or None (and draws a "no data" marker) if there's
-    no SOC data for this day."""
+    """Draw SOC, power, demand and price for one day.
+
+    Args:
+        axes: (ax_soc, ax_power, ax_demand, ax_price).
+        day: Date, e.g. "2025-01-21".
+        soc_unit: "mwh" or "pct".
+        units: Battery codes to draw.
+
+    Returns:
+        The day's timezone, or None if there is no SOC data (a "no data" note is drawn).
+    """
     ax_soc, ax_power, ax_demand, ax_price = axes
     soc_df, power_df, demand, price = _load_data()
 
@@ -192,16 +182,18 @@ def _draw_day_panels(axes, day: str, soc_unit: str, units: list[str]):
 
 
 def plot_day(day: str, units: list[str] | None = None, soc_unit: str = "mwh"):
-    """Four stacked single-axis panels for one day: stored energy (MWh or %
-    of rated capacity, per `soc_unit`), power (MW), demand (MW), price
-    ($/MWh). No twinx anywhere - different scales get different panels,
-    never a second y-axis sharing one frame.
+    """Plot SOC, power, demand and price for one day, one panel each.
 
-    `soc_unit="mwh"` (default) plots absolute stored energy - saved as
-    <day>_day.png. `soc_unit="pct"` plots % of each unit's empirically
-    derived rated capacity (see _get_soc_capacity) - saved as
-    <day>_day_pct.png. Generate both if you want them side by side; nothing
-    else on the figure changes between the two."""
+    Saved as <day>_day.png, or <day>_day_pct.png for soc_unit="pct".
+
+    Args:
+        day: Date, e.g. "2025-01-21".
+        units: Battery codes; defaults to battery_codes.
+        soc_unit: "mwh" for MWh, "pct" for % of capacity.
+
+    Returns:
+        The figure, or None if there is no data for the day.
+    """
     if soc_unit not in ("mwh", "pct"):
         raise ValueError(f"soc_unit must be 'mwh' or 'pct', got {soc_unit!r}")
 
@@ -231,12 +223,19 @@ def plot_day(day: str, units: list[str] | None = None, soc_unit: str = "mwh"):
 
 
 def plot_day_comparison(day: str, soc_unit: str = "mwh", days_before: int = 7, units: list[str] | None = None):
-    """Two of plot_day's 4-panel stacks side by side in one figure: the day
-    `days_before` days earlier on the left, `day` itself on the right (left
-    to right is chronological order). Each row (SOC, power, demand, price)
-    shares one y-axis across both columns, so the comparison reflects
-    actual magnitude differences rather than each panel's own auto-scaling.
-    Saved as <day>_vs_week_before[_pct].png."""
+    """Plot plot_day's panels for an earlier day (left) and day (right), each row on a shared y-axis.
+
+    Saved as <day>_vs_week_before[_pct].png.
+
+    Args:
+        day: Date, e.g. "2025-01-21".
+        soc_unit: "mwh" or "pct".
+        days_before: How many days earlier the left column is.
+        units: Battery codes; defaults to battery_codes.
+
+    Returns:
+        The figure, or None if there is no data.
+    """
     if soc_unit not in ("mwh", "pct"):
         raise ValueError(f"soc_unit must be 'mwh' or 'pct', got {soc_unit!r}")
 
@@ -293,14 +292,13 @@ def plot_day_comparison(day: str, soc_unit: str = "mwh", days_before: int = 7, u
 
 
 def _default_obligation_mw() -> float:
+    """Sum of the batteries' rated MW."""
     return sum(battery_capacity_MW.values())
 
 
 
 def _load_bidstack() -> pd.DataFrame | None:
-    """Read the bidstack dataset if it's been extracted yet, else None with a
-    clear message. Kept out of _load_data()'s cache because most plots don't
-    need it and it's by far the largest of these datasets."""
+    """The bidstack dataset, or None (with a message) if it hasn't been extracted."""
     if not is_extracted("bidstack"):
         print("bidstack not extracted yet - run data_extraction/main.py to produce it")
         return None
@@ -308,14 +306,11 @@ def _load_bidstack() -> pd.DataFrame | None:
 
 
 def _draw_bidstack_panel(ax: plt.Axes, day_code_bidstack: pd.DataFrame, norm, cmap: str = "turbo"):
-    """One battery's bid stack across one day: x = dispatch interval, bars
-    stacked by tranche (cumulative MW, lowest-tranche-number at the
-    bottom - tranches are submitted in ascending price order, so this
-    runs cheapest/most-negative-price at the bottom to priciest at the
-    top), coloured by that tranche's submitted price. Many tranches have
-    zero quantity (pure price breakpoints with no incremental capacity
-    attached) and simply don't draw a visible segment. Returns the day's
-    tz, or None if there's no data for this battery/day."""
+    """Draw one battery's bid stack over one day: bars stacked by tranche, coloured by submitted price.
+
+    Returns:
+        The day's timezone, or None if there is no data.
+    """
     if day_code_bidstack.empty:
         ax.text(0.5, 0.5, "no data", ha="center", va="center", transform=ax.transAxes, color="grey", fontsize="small")
         return None
@@ -350,15 +345,7 @@ _CLEARING_PRICE_LINE_COLOR = "#FFD400"
 
 
 def _overlay_soc_and_price(ax: plt.Axes, soc: pd.Series | None, price: pd.Series | None, show_ticks: bool):
-    """Twin-axis overlay of stored energy (SOC, MWh) and market clearing
-    price ($/MWh) on top of a bid-stack panel. Deliberately breaks plot_day's
-    "no twinx" rule - here the overlay IS the point (see how SOC and where
-    the market cleared line up against this battery's own offer stack), not
-    an accident of cramming unrelated series onto one frame. Both lines get
-    a high-contrast stroke outline so they stay legible against the
-    colour-coded bars underneath regardless of bar colour. `show_ticks`
-    only draws axis numbers/labels (kept off half the grid - see caller - to
-    cut clutter; the lines themselves always draw)."""
+    """Overlay SOC (MWh) and clearing price ($/MWh) on a bid-stack panel, on twin y-axes."""
     ax_soc = ax.twinx()
     if soc is not None and not soc.empty:
         ax_soc.plot(
@@ -402,6 +389,7 @@ def _overlay_soc_and_price(ax: plt.Axes, soc: pd.Series | None, price: pd.Series
 
 
 def _build_price_norm(color_mode: str, combined: pd.DataFrame, price_clip: float, symlog_linthresh: float):
+    """(colour norm, colour bar extend) for color_mode "clip", "minmax" or "symlog"."""
     abs_max = combined["submitted_price"].abs().max()
     if not abs_max or pd.isna(abs_max):
         abs_max = 1.0
@@ -425,31 +413,22 @@ def plot_bidstack_comparison(
     symlog_linthresh: float = 50,
     overlay_soc_and_price: bool = False,
 ):
-    """6 rows (one per battery) x 2 columns (week-before | day) grid: each
-    panel is that battery's bid stack across the day (see
-    _draw_bidstack_panel) - x = time, bars stacked by tranche (cumulative
-    MW), coloured by submitted price (turbo rainbow colormap - blue/green =
-    low or negative price, yellow/red = high price), shared across the
-    whole figure. Rainbow instead of a 2-colour diverging map so adjacent
-    price bands stay visually distinct instead of everything mid-range
-    collapsing toward the same pale colour. `color_mode` controls how price
-    maps to colour:
-      - "clip" (default): fixed +/-`price_clip` bounds: a handful of
-        tranches sit at the AEMO offer price ceiling/floor (~+-$1000), and
-        letting those set the scale washes out the range most bids
-        actually live in, so anything beyond `price_clip` just saturates
-        to full-intensity red/blue instead of stretching the scale.
-      - "minmax": bounds are the actual +-max(abs(price)) in the figure -
-        no clipping, but a single extreme bid can flatten everything else.
-      - "symlog": symmetric log scale (linear within +-`symlog_linthresh`,
-        log beyond) - compresses extreme values without hard-clipping them.
-    Each row's y-axis (MW) is shared across its own two columns, like
-    plot_day_comparison.
+    """Plot each battery's bid stack (rows) for an earlier day and day (columns), coloured by price.
 
-    Pass `bidstack_df` directly to bypass the normal parquet-cache loader -
-    e.g. to test against a small hand-fetched sample before the full
-    extraction has finished. Defaults to loading
-    data/processed_data/bidstack.parquet."""
+    Args:
+        day: Date, e.g. "2025-01-21".
+        days_before: How many days earlier the left column is.
+        units: Battery codes; defaults to battery_codes.
+        bidstack_df: Bid stack to use instead of loading it.
+        color_mode: "minmax" (scale to the largest |price|), "clip" (saturate beyond
+            ±price_clip) or "symlog".
+        price_clip: $/MWh bound for "clip".
+        symlog_linthresh: $/MWh range around 0 where "symlog" is linear.
+        overlay_soc_and_price: Overlay SOC and clearing price on each panel.
+
+    Returns:
+        The figure, or None if there is no bid stack data.
+    """
     units = units or battery_codes
     compare_day = (pd.Timestamp(day) - pd.Timedelta(days=days_before)).strftime("%Y-%m-%d")
 
@@ -578,11 +557,7 @@ def plot_bidstack_comparison(
 
 
 def regenerate_new_plots():
-    """Regenerate every plot this module produces: day (MWh + % variants),
-    day-vs-week-before comparison (MWh + % variants), bidstack comparison,
-    and headroom for each system_stress_events date, plus the whole-record
-    entry-energy scatter. Bidstack comparison is skipped automatically
-    (with a message) until bidstack.parquet exists."""
+    """Regenerate every plot in this module for each system_stress_events date."""
     from tools.constants import system_stress_events
 
     for event in system_stress_events:

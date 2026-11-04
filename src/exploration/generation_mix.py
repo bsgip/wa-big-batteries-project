@@ -14,6 +14,7 @@ from analysis.generation_mix import (
     monthly_generation_share,
 )
 from data_extraction.catalog import load
+from tools.plot_style import TECHNOLOGY_COLORS
 from visualisation.plot_monthly_bars import plot_monthly_stacked_bars
 
 # the whole market history; Sep 2023 is only the last few days, so start at Oct
@@ -21,14 +22,6 @@ START = "2023-10-01"
 # year-on-year: the same months each year (Dec-Sep, the full months every year has)
 SAME_MONTHS = [("2023-12-01", "2024-09-30"), ("2024-12-01", "2025-09-30"), ("2025-12-01", "2026-09-30")]
 
-COLORS = {
-    "Coal": "#4D4D4D",
-    "Gas": "#E69F00",
-    "Other (liquid, waste, bioenergy)": "0.75",
-    "Wind": "#56B4E9",
-    "Grid-scale solar": "#F0E442",
-    "Batteries (discharge)": "tab:red",
-}
 
 
 def main():
@@ -40,7 +33,7 @@ def main():
     shares = monthly_generation_share(monthly_mwh)
     plot_monthly_stacked_bars(
         shares,
-        colors=COLORS,
+        colors=TECHNOLOGY_COLORS,
         ylabel="Share of generation\n(% of energy sent out in the month)",
         title="Generation mix by month",
         filename="generation_mix/generation_mix_monthly.png",
@@ -64,7 +57,7 @@ def main():
     monthly_mw = monthly_capacity_mw(power, groups, capacity)
     plot_monthly_stacked_bars(
         monthly_generation_share(monthly_mw),
-        colors=COLORS,
+        colors=TECHNOLOGY_COLORS,
         ylabel="Share of capacity\n(% of MW in service in the month)",
         title="Capacity mix by month",
         filename="generation_mix/capacity_mix_monthly.png",

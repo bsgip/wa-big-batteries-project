@@ -11,6 +11,7 @@ from tools.plot_style import save_figure
 
 
 def _grid_shape(n: int) -> tuple[int, int]:
+    """(rows, cols) of the most square grid that fits n panels."""
     cols = math.ceil(math.sqrt(n))
     rows = math.ceil(n / cols)
     return rows, cols
@@ -26,13 +27,18 @@ def plot_heatmap_grid(
     filename: str,
     vmax: float | None = 100,
 ):
-    """Grid of one time-of-day (y) x date (x) heatmap per battery, built
-    from the `<code><column_suffix>` columns of `df`. `center=0` gives a
-    diverging colour scale shared across all batteries (for signed power);
-    `center=None` gives a sequential 0-`vmax` scale shared across all
-    batteries (`vmax=100` by default, for SOC %; pass the data's own max -
-    e.g. via the grids once built - for an absolute-unit version like MWh,
-    so batteries of different rated capacity stay comparably scaled)."""
+    """Plot one time-of-day x date heatmap per battery, on one shared colour scale.
+
+    Args:
+        df: Wide frame with a <code><column_suffix> column per battery.
+        column_suffix: Column suffix, e.g. "_power_pct".
+        cmap: Matplotlib colour map.
+        center: 0 for a diverging scale (signed power); None for a sequential 0 to vmax scale.
+        colorbar_label: Colour bar label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        vmax: Top of the sequential scale (100 for SOC %).
+    """
     time_of_day = df.index.strftime("%H:%M")
     date = df.index.normalize()  # real calendar date, not day-of-year - avoids year collisions
 

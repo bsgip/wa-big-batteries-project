@@ -49,9 +49,15 @@ def codes_in(df, candidates: list[str] | None = None) -> list[str]:
 
 
 def commissioning_dates(*frames, candidates: list[str] | None = None) -> dict[str, pd.Timestamp]:
-    """{code: first non-NaN timestamp} for each unit, earliest across all frames given.
+    """First reading of each unit, earliest across all frames.
 
-    Pass soc and power together: they first see some units on different dates.
+    Args:
+        *frames: Frames with one column per unit, e.g. soc and power (they first see some
+            units on different dates).
+        candidates: Codes to look for; defaults to esr_codes.
+
+    Returns:
+        {code: first non-NaN timestamp}.
     """
     dates: dict[str, pd.Timestamp] = {}
     for df in frames:
@@ -63,7 +69,16 @@ def commissioning_dates(*frames, candidates: list[str] | None = None) -> dict[st
 
 
 def commissioned_capacity(index, dates: Mapping[str, pd.Timestamp], capacity: Mapping[str, float]) -> pd.Series:
-    """Total rated capacity of units commissioned by each timestamp in index (NaN before the first)."""
+    """Total rated capacity commissioned by each timestamp.
+
+    Args:
+        index: Timestamps.
+        dates: {code: commissioning timestamp}.
+        capacity: {code: rated capacity}.
+
+    Returns:
+        Capacity per timestamp; NaN before the first unit.
+    """
     total = pd.Series(0.0, index=index)
     for code, start in dates.items():
         if code not in capacity:  # esr_codes carries non-batteries (solar, hydro) with no MWh rating
@@ -99,6 +114,10 @@ battery_capacity_MW = {
 # replacing the old per-event start/end times below
 PEAK_ESROI_START = "17:30"
 PEAK_ESROI_END = "21:30"
+
+# daytime charging window - the midday window soc_features.py uses
+DAYTIME_START = "09:00"
+DAYTIME_END = "15:00"
 
 # Due to a long outage in 2024, data analysis will start in December 2024
 START_DATE = "2024-12-01"

@@ -1,7 +1,4 @@
-"""Whole-timeline view of data quality, to justify the analysis period starting at START_DATE.
-
-Top: daily mean fleet SOC. Bottom: % of 5-min SOC readings present,
-per battery per month.
+"""Data quality over the whole timeline, to justify starting the analysis at START_DATE.
 
     python -m visualisation.plot_data_period
 """
@@ -17,13 +14,21 @@ from visualisation.plot_trend_band import _draw_sse_events
 
 
 def full_5min_index(soc: pd.DataFrame) -> pd.DataFrame:
-    """soc with a row for every 5-min interval, so intervals missing from the file count as NaN."""
+    """Reindex soc onto every 5-min interval, so missing intervals become NaN rows."""
     full = pd.date_range(soc.index.min(), soc.index.max(), freq="5min")
     return soc.reindex(full)
 
 
 def monthly_availability(soc: pd.DataFrame, codes: list[str]) -> pd.DataFrame:
-    """% of 5-min readings present per battery per month, counted from each battery's first reading (NaN before)."""
+    """Share of 5-min SOC readings present per battery per month.
+
+    Args:
+        soc: Clean SOC frame on a full 5-min index, from full_5min_index.
+        codes: Battery codes.
+
+    Returns:
+        One row per month, one % column per battery; NaN before a battery's first reading.
+    """
     out = {}
     for code in codes:
         present = soc[code].notna().astype(float)
@@ -41,13 +46,15 @@ def plot_data_period(
     categories: list[str] | None = None,
     filename: str = "data_description/data_period_overview.png",
 ):
-    """Two-panel figure: fleet SOC (optionally with SSE events shaded), and monthly data availability per battery.
+    """Plot daily fleet SOC (top) and monthly SOC data availability per battery (bottom).
 
-    soc: clean SOC frame over the whole timeline (load_clean("soc", start_date=None))
-    events: from analysis.sse_events.load_sse_events() to shade them (default: no shading)
-    start_date: start of the analysis period, marked on both panels
-    codes: batteries in the availability panel (default: battery_codes)
-    categories: SSE categories to shade on the top panel (default: ["outage"])
+    Args:
+        soc: Clean SOC frame over the whole timeline, from load_clean("soc", start_date=None).
+        events: SSE events to shade, from sse_events.load_sse_events; None for no shading.
+        start_date: Start of the analysis period, marked on both panels.
+        codes: Batteries in the availability panel; defaults to battery_codes.
+        categories: SSE categories to shade; defaults to ["outage"].
+        filename: Path under local_plots_dir to save the figure to.
     """
     codes = battery_codes if codes is None else codes
     categories = ["outage"] if categories is None else categories

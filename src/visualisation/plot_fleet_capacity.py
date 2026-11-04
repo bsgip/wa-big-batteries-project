@@ -8,18 +8,20 @@ from tools.plot_style import UNIT_COLORS, save_figure
 
 
 def semester_labels(index: pd.DatetimeIndex) -> pd.Index:
-    """"2025-S1" / "2025-S2" per timestamp. Sorts correctly as plain
-    strings, so the bars come out chronological without extra work."""
+    """"YYYY-S1" / "YYYY-S2" label for each timestamp in index."""
     semester = np.where(index.month <= 6, "S1", "S2")
     return pd.Index(index.year.astype(str) + "-" + semester, name="semester")
 
 
 def fleet_capacity_by_semester(soc_df: pd.DataFrame, codes: list[str] | None = None) -> pd.DataFrame:
-    """Rated capacity (MWh) per semester, one column per battery (0 before its first reading).
+    """Rated capacity of each battery per semester.
 
-    codes: batteries to include (default: every battery in soc_df, ALINTA_WGP_ESR1 included,
-        since this shows all capacity built so far). Checked against fleet_capacity_MWh
-        when codes is the fleet (battery_codes).
+    Args:
+        soc_df: Clean SOC frame (per-battery MWh columns).
+        codes: Batteries to include; defaults to every battery in soc_df, ALINTA_WGP_ESR1 included.
+
+    Returns:
+        One row per semester, one MWh column per battery (0 before its first reading).
     """
     periods = semester_labels(soc_df.index)
     codes_present = codes if codes is not None else codes_in(soc_df)
@@ -49,10 +51,13 @@ def plot_fleet_capacity_evolution(
     filename: str = "fleet_capacity_evolution.png",
     codes: list[str] | None = None,
 ):
-    """Stacked bars of fleet storage capacity per semester, one segment per
-    battery, with the fleet total above each bar.
+    """Plot stacked bars of fleet capacity per semester, one segment per battery, total above each bar.
 
-    codes: see fleet_capacity_by_semester (default: every battery, ALINTA_WGP_ESR1 included)."""
+    Args:
+        soc_df: Clean SOC frame over the whole timeline.
+        filename: Path under local_plots_dir to save the figure to.
+        codes: Batteries to include; see fleet_capacity_by_semester.
+    """
     table = fleet_capacity_by_semester(soc_df, codes)
 
     fig, ax = plt.subplots(figsize=(10, 6))

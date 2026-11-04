@@ -1,20 +1,5 @@
-"""Every directory the project reads or writes, in one place.
-
-The work spans two machines, and the paths split cleanly along that line:
-
-    local_*   The repo's own data/ folder - the extracted and cleaned
-              parquets, plots, docs. Small enough to commit, so it travels
-              with the checkout and is there on both machines.
-
-    vm_*      The raw WEMDE corpus download.py pulls down (~70GB+ of JSON).
-              Far too big for the repo, so it sits outside it, under your
-              home directory. VM only - none of these exist on a laptop.
-
-Both are anchored explicitly, and neither uses the current working
-directory. Scripts here get run from the repo root, from src/ and from
-notebooks; a cwd-derived root quietly resolves to a directory that doesn't
-exist instead of failing, and a missing directory doesn't surface until
-something much later chokes on an empty DataFrame.
+"""Every directory the project reads or writes.
+local_*: the repo's data/ folder. vm_*: the raw WEMDE download, outside the repo (VM only).
 """
 
 from pathlib import Path
@@ -54,13 +39,10 @@ vm_predispatch_data_dir = vm_raw_data_dir / "dispatchSolution" / "predispatchDat
 
 
 def raw_dataset_dir(dataset: str) -> Path:
-    """Where download.py and the parsers keep files for one dataset, e.g.
-    "caseInputData" or "dispatchSolution/dispatchData". Holds only the
-    downloaded/extracted .json files - nothing else."""
+    """Folder of downloaded .json files for one dataset, e.g. "caseInputData"."""
     return vm_raw_data_dir / dataset
 
 
 def download_state_dir(dataset: str) -> Path:
-    """Where download.py tracks which zip archives it's already extracted for
-    a dataset. Kept out of raw_dataset_dir so that directory stays pure data."""
+    """Folder where download.py tracks failures and extracted zips for one dataset."""
     return VM_DATA_ROOT / "download_state" / dataset

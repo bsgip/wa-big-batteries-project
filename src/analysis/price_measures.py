@@ -43,13 +43,20 @@ def daily_price_measures(
     spread_hours=2,
     min_intervals=MIN_INTERVALS_PER_DAY,
 ):
-    """Daily price measures from 5-min prices, optionally only between start and end each day.
+    """Daily price statistics from 5-min prices.
 
-    price: 5-min price series (or one-column frame), $/MWh
-    start, end: time window each day, e.g. "00:00", "17:30" (None = whole day)
-    threshold: price for pct_above_threshold ($/MWh)
-    spread_hours: window length for the best-average spread
-    min_intervals: days with fewer readings are dropped (lower it for short windows, None keeps all)
+    Args:
+        price: 5-min energy price ($/MWh), as a Series or one-column frame.
+        start: Start of the time window used each day, e.g. "00:00"; None for the whole day.
+        end: End of that window (exclusive).
+        threshold: Price ($/MWh) for pct_above_threshold.
+        spread_hours: Window length (hours) for spread_<n>h.
+        min_intervals: Days with fewer readings are dropped; None keeps every day.
+
+    Returns:
+        One row per day: price level and spread (max, min, mean, median, std, iqr, log_iqr,
+        range, spike, spread_<n>h), 5-min change volatility (mad, std_change, max_move, tv),
+        pct_above_threshold, pct_negative and n.
     """
     s = price.squeeze()  # one-column DataFrame -> Series
     if start is not None and end is not None:
@@ -102,7 +109,11 @@ def daily_price_measures(
 
 
 def plot_std_trend(measures):
-    """Monthly trend band of the daily price standard deviation."""
+    """Plot the monthly trend band of the daily price standard deviation.
+
+    Args:
+        measures: Daily measures, from daily_price_measures.
+    """
     trend_band_plot(
         df=measures[['std']],
         ylabel='Daily price standard deviation ($/MWh)',
@@ -112,8 +123,11 @@ def plot_std_trend(measures):
 
 
 def plot_price_median_trend(measures):
-    """Monthly trend band of daily energy price median, with a dashed line at the median of the
-    daily medians over the same months each year (SAME_MONTHS)."""
+    """Plot the monthly trend band of the daily median price, with SAME_MONTHS medians marked.
+
+    Args:
+        measures: Daily measures, from daily_price_measures.
+    """
     filename = 'price_daily_median_trend.png'
     fig, ax, _ = trend_band_plot(
         df=measures['median'],

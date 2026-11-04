@@ -1,13 +1,5 @@
-"""Who sets the market price?
-
-Each dispatch interval, the dispatch solution lists, per market service, the variables whose price
-set that service's price - its "contributions". Most are offer tranches (<code>_<service>_Tranche_<n>,
-e.g. KWINANA_ESR1_energy_Tranche_01 or KWINANA_ESR1_contingencyLower_Tranche_02 - energy and FCESS
-are co-optimised, so FCESS offers can help set the energy price); the rest are deficit or network
-constraint variables (e.g. contRaise_deficit). A price often has several contributions.
-
-A price setter here is a facility (any of its tranches), or a non-offer variable, counted once per
-interval however many of its tranches contribute.
+"""Who sets the market price? Each interval, the dispatch solution lists the variables that set each service's price.
+A price setter is a facility (any of its tranches) or a non-offer variable, counted once per interval.
 """
 
 import pandas as pd
@@ -25,8 +17,15 @@ FCESS_ONLY = "FCESS offers only"
 
 
 def price_setting_contributions(service: str = "energy") -> pd.DataFrame:
-    """One row per contribution to `service`'s price: dispatch_interval, facility and offer_service
-    (the service the tranche is offered in) - both NaN for variables that aren't offer tranches."""
+    """Every contribution to a market service's price.
+
+    Args:
+        service: Market service, e.g. "energy" or "contingencyRaise".
+
+    Returns:
+        One row per contribution: dispatch_interval, facility and offer_service (the service
+        the tranche is offered in); both NaN for variables that aren't offer tranches.
+    """
     df = load("price_setting", columns=["market_service", "contributing_variable"])
     df = df.loc[df["market_service"] == service].dropna(subset=["contributing_variable"])
 
@@ -35,16 +34,16 @@ def price_setting_contributions(service: str = "energy") -> pd.DataFrame:
 
 
 def monthly_price_setter_shares(codes: list[str], service: str = "energy") -> pd.DataFrame:
-    """Each month, the share (%) of all of `service`'s price setters that each battery accounts for.
+    """Each month, the share of a service's price setters that each battery accounts for.
 
-    Per interval, each price setter counts once; the denominator is the number of price setters
-    summed over the month's intervals, so a month adds up to 100%.
+    Each price setter counts once per interval.
 
-    codes: battery codes, one column each; every other facility goes into OTHER_FACILITIES, and
-        variables that aren't offer tranches into NON_OFFER
-    service: market service, e.g. "energy", "contingencyRaise"
+    Args:
+        codes: Battery codes, one column each.
+        service: Market service, e.g. "energy".
 
-    Returns one row per month, columns: codes, then OTHER_FACILITIES and NON_OFFER.
+    Returns:
+        One row per month, % columns for codes, OTHER_FACILITIES and NON_OFFER (rows add up to 100).
     """
     c = price_setting_contributions(service)
     setter = c["facility"].where(c["facility"].isin(codes), OTHER_FACILITIES).where(c["facility"].notna(), NON_OFFER)
@@ -56,15 +55,15 @@ def monthly_price_setter_shares(codes: list[str], service: str = "energy") -> pd
 
 
 def monthly_battery_energy_offer_types(codes: list[str]) -> pd.DataFrame:
-    """Each month, across the battery fleet: when a battery sets the energy price, which of its
-    offers do - its energy offer only, energy and FCESS offers, or FCESS offers only.
+    """Each month, which of a battery's offers set the energy price when it sets it.
 
-    Counted per battery per interval (a battery that sets the price counts once in that interval);
-    the denominator is all such battery-intervals in the month, so a month adds up to 100%.
+    Counted once per battery per interval.
 
-    codes: the batteries in the fleet
+    Args:
+        codes: The batteries in the fleet.
 
-    Returns one row per month, columns ENERGY_ONLY, ENERGY_AND_FCESS, FCESS_ONLY.
+    Returns:
+        One row per month, % columns ENERGY_ONLY, ENERGY_AND_FCESS and FCESS_ONLY (rows add up to 100).
     """
     c = price_setting_contributions("energy")
     c = c.loc[c["facility"].isin(codes)].assign(energy_offer=lambda d: d["offer_service"] == "energy")
@@ -76,4 +75,29 @@ def monthly_battery_energy_offer_types(codes: list[str]) -> pd.DataFrame:
     counts = (offer_type.rename("offer_type").reset_index()
               .groupby([pd.Grouper(key="dispatch_interval", freq="MS"), "offer_type"]).size().unstack(fill_value=0))
     counts = counts.reindex(columns=[ENERGY_ONLY, ENERGY_AND_FCESS, FCESS_ONLY], fill_value=0)
+    return counts.div(counts.sum(axis=1), axis=0) * 100
+
+
+def hourly_price_setter_shares(groups: pd.Series, start: str, end: str, service: str = "energy") -> pd.DataFrame:
+    """By hour of day, the share of a service's price setters in each group.
+
+    Each price setter counts once per interval.
+
+    Args:
+        groups: {facility code: group}, e.g. from generation_mix.facility_groups; other
+            facilities go into OTHER_FACILITIES.
+        start: First date, e.g. "2025-12-01".
+        end: End date (exclusive).
+        service: Market service, e.g. "energy".
+
+    Returns:
+        One row per hour (0-23), one % column per group plus NON_OFFER (rows add up to 100).
+    """
+    c = price_setting_contributions(service)
+    tz = c["dispatch_interval"].dt.tz
+    c = c.loc[(c["dispatch_interval"] >= pd.Timestamp(start, tz=tz)) & (c["dispatch_interval"] < pd.Timestamp(end, tz=tz))]
+
+    group = c["facility"].map(groups).fillna(OTHER_FACILITIES).where(c["facility"].notna(), NON_OFFER)
+    setters = c[["dispatch_interval", "facility"]].assign(group=group).drop_duplicates()  # each setter once per interval
+    counts = setters.groupby([setters["dispatch_interval"].dt.hour.rename("hour"), "group"]).size().unstack(fill_value=0)
     return counts.div(counts.sum(axis=1), axis=0) * 100

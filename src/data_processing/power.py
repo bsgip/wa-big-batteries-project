@@ -1,15 +1,5 @@
-"""Derived columns and range checks for battery power (the extracted
-sentOut SCADA field, in MW - positive discharging, negative charging).
-
-The extracted frame has a column for EVERY facility, not just batteries;
-everything here only touches the battery_codes columns and passes the rest
-through unchanged.
-
-No sentinel masking here: unlike SOC's chargeLevel 999 (see soc.py), a
-sample of initialMw across the dispatchSolution corpus found no equivalent
-sentinel value - a full-corpus check confirmed it, the worst overshoot being
-KWINANA_ESR1 at 1.9% over its rating. (That check was on initialMw, which
-power used to come from; sentOut is the same number.)
+"""Battery power (MW, + discharging, - charging): clipping and % columns. Non-battery columns pass through.
+No sentinel value was found in power (unlike SOC's 999), so none is masked.
 """
 
 import logging
@@ -22,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def add_power_pct_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Add a <code>_power_pct column for each battery, computed from its
-    power column (MW) and rated capacity in battery_capacity_MW."""
+    """Add a <code>_power_pct column per battery: power as % of its rated MW."""
     for code in battery_codes:
         if code not in df:
             logger.warning(f"{code}: no power column found, skipping power_pct")
@@ -34,9 +23,15 @@ def add_power_pct_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_power_overshoot_df(df: pd.DataFrame, capacity: dict[str, float] | None = None) -> pd.DataFrame:
-    """Clip each battery's power to +/- its rated capacity in MW. The clip is
-    symmetric because power is signed - positive discharging, negative
-    charging - so both directions are capped at the rating."""
+    """Clip each battery's power to ± its rated MW.
+
+    Args:
+        df: Power (MW), one column per facility.
+        capacity: {code: rated MW}; defaults to battery_capacity_MW.
+
+    Returns:
+        A clipped copy of df.
+    """
     rated_capacity = battery_capacity_MW if capacity is None else capacity
     df = df.copy()
 
@@ -53,10 +48,13 @@ def clean_power_overshoot_df(df: pd.DataFrame, capacity: dict[str, float] | None
 
 
 def process(df: pd.DataFrame) -> pd.DataFrame:
-    """Extracted power (MW) -> analysis-ready: readings clipped to rated
-    capacity, plus a <code>_power_pct column per battery alongside the bare
-    <code> MW columns. Clipping runs first so the pct columns are derived
-    from the clipped values; it copies, so add_power_pct_columns writing into
-    the frame it's given doesn't touch the caller's."""
+    """Clean extracted power.
+
+    Args:
+        df: Extracted power (MW, + discharging, - charging), one column per facility.
+
+    Returns:
+        df with battery columns clipped to rated MW, plus a <code>_power_pct column per battery.
+    """
     df = clean_power_overshoot_df(df)
     return add_power_pct_columns(df)

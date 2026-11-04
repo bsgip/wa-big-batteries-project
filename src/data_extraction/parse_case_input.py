@@ -1,17 +1,5 @@
-"""Parse per-dispatch-interval fields out of every caseInputData file
-downloaded by download.py, in a single parallel pass over the corpus.
-
-Each file is ~450MB (~70GB total across the ~1,056 files), so re-walking
-the corpus once per field would be expensive - instead, every field has a
-small extractor registered in _FIELDS, and build_case_input_data() walks
-each file exactly once, running every registered extractor against each
-dispatch interval as it goes.
-
-To add a new field: write a small `_extract_<name>(item) -> list[dict]`
-function (one caseData item in, that field's rows out) and a matching
-`_finish_<name>(rows) -> DataFrame` function (raw row list in, final
-DataFrame out - a pivot, a sort, whatever that field needs), then add both
-to _FIELDS. Nothing else needs to change.
+"""Parse fields from every caseInputData file in one parallel pass.
+To add a field: write _extract_<name>(item) and _finish_<name>(rows), and add both to _FIELDS.
 """
 
 import functools
@@ -33,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_charge_level(item: dict) -> list[dict]:
-    """Battery SOC (MWh), off the chargeLevel SCADA tag."""
+    """Battery SOC from the chargeLevel SCADA tag.
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per battery (MWh).
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for scada in item["scada"]:
@@ -47,7 +42,14 @@ def _extract_charge_level(item: dict) -> list[dict]:
 
 
 def _extract_demand(item: dict) -> list[dict]:
-    """System-wide demand/DPV SCADA tags (not per-battery)."""
+    """System-wide demand and DPV SCADA tags.
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per tag.
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for scada in item["scada"]:
@@ -58,15 +60,16 @@ def _extract_demand(item: dict) -> list[dict]:
 
 
 def _extract_power(item: dict) -> list[dict]:
-    """Per-facility measured output (MW), off the `<code>.energy.sentOut`
-    SCADA tag - EVERY facility with SCADA, not just batteries: thermal,
-    wind/solar, batteries (positive discharging, negative charging) and a
-    few loads (negative). Demand side programmes have no sentOut tag.
+    """Measured output (MW) per facility, from the <code>.energy.sentOut SCADA tag.
 
-    This replaced initialMw from dispatchSolution as the source of power: the
-    two are the same number (checked: identical for every facility in both,
-    on 2023-09-30 14:00, 2024-01-15 and 2026-10-18 08:00), and this way it
-    comes out of the much cheaper caseInputData walk."""
+    Covers every facility with SCADA (+ sending out, - drawing in); same values as initialMw.
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per facility.
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for scada in item["scada"]:
@@ -78,7 +81,14 @@ def _extract_power(item: dict) -> list[dict]:
 
 
 def _extract_dispatch_condition(item: dict) -> list[dict]:
-    """System-wide dispatch condition SCADA tags (e.g. loadRelief)."""
+    """System-wide dispatch condition SCADA tags (e.g. loadRelief).
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per tag.
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for scada in item["scada"]:
@@ -89,8 +99,14 @@ def _extract_dispatch_condition(item: dict) -> list[dict]:
 
 
 def _extract_bidstack(item: dict) -> list[dict]:
-    """Battery offer tranches (bid stack), off
-    markets.energy.facilities[].tranches[]."""
+    """Battery energy offer tranches (markets.energy.facilities[].tranches[]).
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per battery tranche.
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for facility in item["markets"]["energy"]["facilities"]:
@@ -134,8 +150,14 @@ _FCESS_FACILITY_FIELDS = {
 
 
 def _extract_fcess_bidstack(item: dict) -> list[dict]:
-    """Battery FCESS offer tranches, off markets.<service>.facilities[].tranches[]
-    for the five FCESS markets, plus each facility's enablement limits."""
+    """Battery offer tranches in the five FCESS markets, with enablement limits.
+
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        One row per battery tranche per market.
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for market_service in FCESS_MARKET_SERVICES:
@@ -177,16 +199,14 @@ _FORECAST_DIRECTIONS = {
 
 
 def _extract_unconstrained_forecast(item: dict) -> list[dict]:
-    """Per-facility unconstrained (i.e. pre-network-limit) output forecast in
-    MW, off unconstrainedForecast[]. Only intermittent/semi-scheduled
-    facilities appear - wind farms, solar farms and the bioenergy/hydro
-    stragglers - so this is the renewable fleet, not every facility in the
-    market.
+    """Unconstrained output forecast (MW) per renewable facility.
 
-    Two rows per facility per interval, one for each direction, signed. Both
-    directions are kept because a hybrid (solar or wind sharing a code with
-    storage, e.g. SBSOLAR1_CUNDERDIN_PV1) can forecast a charge, and dropping
-    that would overstate what the facility puts into the grid."""
+    Args:
+        item: One caseData item from the JSON.
+
+    Returns:
+        Two signed rows per facility, one per direction (hybrids can forecast a charge).
+    """
     dispatch_interval = item["dispatchInterval"]
     rows = []
     for facility in item["unconstrainedForecast"]:
@@ -210,8 +230,7 @@ def _extract_unconstrained_forecast(item: dict) -> list[dict]:
 
 
 def _finish_wide(index_col: str, columns_col: str, values_col: str = "value"):
-    """Most SCADA-tag fields (chargeLevel, demand) share the same shape:
-    pivot to one column per code/tag, tz-aware dispatch_interval index."""
+    """Finisher that pivots rows to one column per columns_col value, on a tz-aware dispatch_interval index."""
 
     def finish(rows: list[dict]) -> pd.DataFrame:
         df = pd.DataFrame(rows).pivot(index=index_col, columns=columns_col, values=values_col).astype(float)
@@ -225,15 +244,7 @@ _FORECAST_COLUMNS = ["dispatch_interval", "code", "direction", "value_mw"]
 
 
 def _finish_unconstrained_forecast(rows: list[dict]) -> pd.DataFrame:
-    """Long, not wide - two rows per (dispatch_interval, facility), one per
-    direction, so dispatch_interval is a plain column with duplicates rather
-    than the index.
-
-    Long because the raw field genuinely carries two numbers per facility and
-    extracted/ shouldn't be the place that decides to lose one. Netting them
-    is a decision, so it belongs on the cleaning side
-    (data_processing/unconstrained_forecast.py), which sums the two directions
-    into one value per facility."""
+    """Long frame, two rows per (dispatch_interval, facility); netting is done in data_processing."""
     df = pd.DataFrame(rows, columns=_FORECAST_COLUMNS)
     df["dispatch_interval"] = pd.to_datetime(df["dispatch_interval"]).dt.tz_convert("Australia/Perth")
     df["value_mw"] = df["value_mw"].astype(float)
@@ -255,9 +266,7 @@ _BIDSTACK_COLUMNS = [
 
 
 def _finish_bidstack(rows: list[dict]) -> pd.DataFrame:
-    """Long, not wide - each battery submits multiple tranches per
-    interval, so dispatch_interval is a plain column, not the index, with
-    one row per (dispatch_interval, code, tranche)."""
+    """Long frame, one row per (dispatch_interval, code, tranche)."""
     df = pd.DataFrame(rows, columns=_BIDSTACK_COLUMNS)
     df["dispatch_interval"] = pd.to_datetime(df["dispatch_interval"]).dt.tz_convert("Australia/Perth")
     return df.sort_values(["dispatch_interval", "code", "tranche"]).reset_index(drop=True)
@@ -269,7 +278,7 @@ _FCESS_BIDSTACK_COLUMNS = (
 
 
 def _finish_fcess_bidstack(rows: list[dict]) -> pd.DataFrame:
-    """Long, one row per (dispatch_interval, market_service, code, tranche)."""
+    """Long frame, one row per (dispatch_interval, market_service, code, tranche)."""
     df = pd.DataFrame(rows, columns=_FCESS_BIDSTACK_COLUMNS)
     df["dispatch_interval"] = pd.to_datetime(df["dispatch_interval"]).dt.tz_convert("Australia/Perth")
     return df.sort_values(["dispatch_interval", "market_service", "code", "tranche"]).reset_index(drop=True)
@@ -292,12 +301,15 @@ FIELD_NAMES = list(_FIELDS)
 
 
 def _get_case_input_rows(path: Path, field_names: list[str]) -> tuple[dict[str, list[dict]], str | None]:
-    """Walk one file, running the requested extractors (a subset of
-    _FIELDS, or all of it) against each dispatch interval. One bad file
-    must never take down the whole run - failures here are always caught
-    and reported, never raised. Keeps whatever rows were parsed before a
-    failure rather than discarding the whole (huge, ~450MB, ~1 day of
-    data) file."""
+    """Run the requested extractors on every interval of one file.
+
+    Args:
+        path: caseInputData JSON file.
+        field_names: Names in _FIELDS to run.
+
+    Returns:
+        ({field: rows}, error message or None). Rows parsed before a failure are kept.
+    """
     rows_by_field: dict[str, list[dict]] = {name: [] for name in field_names}
 
     try:
@@ -315,16 +327,15 @@ def _get_case_input_rows(path: Path, field_names: list[str]) -> tuple[dict[str, 
 
 
 def build_case_input_data(max_workers: int = 12, fields: list[str] | None = None) -> dict[str, pd.DataFrame]:
-    """Extract the requested fields (default: every field registered in
-    _FIELDS) from every caseInputData file in one pass, returning
-    {field_name: DataFrame}. Pass `fields` to skip running extractors you
-    don't need this time (e.g. you already have soc/demand cached and only
-    want bidstack) - the walk still only happens once either way, this
-    just controls what work happens during it.
+    """Extract fields from every caseInputData file in one parallel pass.
 
-    The corpus is only ~1,056 files, but each is ~450MB (~70GB total) - too
-    slow single-threaded, so it's parsed in parallel across `max_workers`
-    processes."""
+    Args:
+        max_workers: Parallel processes.
+        fields: Names in _FIELDS to extract; defaults to all.
+
+    Returns:
+        {field: DataFrame}.
+    """
     field_names = fields if fields is not None else list(_FIELDS)
     unknown = [name for name in field_names if name not in _FIELDS]
     if unknown:

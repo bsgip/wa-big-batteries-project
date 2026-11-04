@@ -1,5 +1,4 @@
-"""How does wind affect charging? Fleet net charge against net wind generation over the same
-hours, by season - daytime (09:00-15:00) and overnight (22:00-05:00, when wind is strongest).
+"""How does wind affect charging? Fleet net charge against net wind, by season: daytime and overnight.
 
     python -m exploration.wind_charging
 """
@@ -7,8 +6,7 @@ hours, by season - daytime (09:00-15:00) and overnight (22:00-05:00, when wind i
 import pandas as pd
 
 from analysis.energy import fleet_net_energy_pct, window_energy_mwh
-from exploration.solar_charging import DAYTIME_END, DAYTIME_START
-from tools.constants import commissioning_dates
+from tools.constants import DAYTIME_END, DAYTIME_START, commissioning_dates
 from tools.io import load_clean
 from visualisation.plot_pv_charging import plot_by_season_scatter
 

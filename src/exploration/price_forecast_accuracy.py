@@ -1,5 +1,4 @@
-"""How accurate are price forecasts at the horizons batteries plan over?
-Pre-dispatch price forecast error by lead time (1-24 h), for midday and evening half-hours.
+"""Pre-dispatch price forecast error by lead time (1-24 h), for midday and evening half-hours.
 
     python -m exploration.price_forecast_accuracy
 """

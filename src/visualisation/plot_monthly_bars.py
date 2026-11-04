@@ -9,14 +9,19 @@ from tools.plot_style import save_figure
 
 
 def plot_monthly_stacked_bars(monthly_pct, colors, ylabel, title, filename, legend_columns=4):
-    """Stacked monthly bars, one segment per column (e.g. per battery, per technology).
+    """Plot stacked monthly bars, one segment per column.
 
-    monthly_pct: one row per month start, e.g. from price_setting.monthly_price_setter_shares or
-        generation_mix.monthly_generation_share
-    colors: {column: colour}
-    legend_columns: legend entries per row
+    Args:
+        monthly_pct: One row per month start, e.g. from price_setting.monthly_price_setter_shares
+            or generation_mix.monthly_generation_share.
+        colors: {column: colour}.
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        legend_columns: Legend entries per row.
 
-    Returns (fig, ax).
+    Returns:
+        (fig, ax).
     """
     fig, ax = plt.subplots(figsize=(11, 5))
     bottom = pd.Series(0.0, index=monthly_pct.index)

@@ -20,14 +20,29 @@ STATED_PERIOD = re.compile(r"period (?:on )?.{6,20}?,? (\d{1,2}:\d{2})\s*[–-]\
 
 
 def filter_advisories(advisories, keywords=None):
-    """Advisories whose Details contain any of keywords (default: ADVISORY_KEYWORDS)."""
+    """Keep advisories whose Details mention any keyword.
+
+    Args:
+        advisories: AEMO market advisories.
+        keywords: Words to look for; defaults to ADVISORY_KEYWORDS.
+
+    Returns:
+        The matching rows.
+    """
     keywords = ADVISORY_KEYWORDS if keywords is None else keywords
     pattern = "|".join(keywords)
     return advisories[advisories["Details"].str.contains(pattern, na=False)]
 
 
 def stated_times(details):
-    """(start, end) "HH:MM" times of the period stated in an advisory's text, or None if it states none."""
+    """Find the period stated in an advisory's text.
+
+    Args:
+        details: Advisory text.
+
+    Returns:
+        (start, end) as "HH:MM" strings, or None if no period is stated.
+    """
     match = STATED_PERIOD.search(re.sub(r"\s+", " ", str(details)))
     if match is None:
         return None
@@ -35,12 +50,16 @@ def stated_times(details):
 
 
 def corrected_period(advisory):
-    """(start, end) of one advisory; None if it was withdrawn before its stated period began.
+    """Period an advisory warns about.
 
-    Start/End Interval in the AEMO data are the issue and withdrawal times, not the period, so:
-    start = stated start time, end = earlier of stated end and withdrawal (End Interval).
-    The date comes from Start Interval, because some texts carry a date copied from an older advisory.
-    Advisories that state no period keep their original intervals.
+    AEMO's Start/End Interval are the issue and withdrawal times, so the start is the time
+    stated in the text and the end is the earlier of the stated end and the withdrawal.
+
+    Args:
+        advisory: One advisory row.
+
+    Returns:
+        (start, end) timestamps, or None if it was withdrawn before its period began.
     """
     start = pd.Timestamp(advisory["Start Interval"])
     end = pd.Timestamp(advisory["End Interval"]) if pd.notna(advisory["End Interval"]) else pd.NaT
@@ -60,9 +79,14 @@ def corrected_period(advisory):
 
 
 def build_sse_events(advisories, categories):
-    """sse_events table (same columns as sse_events.csv, plus ID) with corrected periods.
+    """Build the sse_events table from advisories, with corrected periods.
 
-    categories: {advisory ID: category}; advisories not in it get DEFAULT_CATEGORY
+    Args:
+        advisories: Filtered advisories, from filter_advisories.
+        categories: {advisory ID: category}; others get DEFAULT_CATEGORY.
+
+    Returns:
+        One row per event, with the sse_events.csv columns plus ID.
     """
     rows = []
     for _, advisory in advisories.iterrows():
@@ -84,7 +108,14 @@ def build_sse_events(advisories, categories):
 
 
 def load_manual_events(path=manual_events_path):
-    """Hand-added SSE events: start/end date and time, category, source (a note on where it comes from)."""
+    """Load hand-added SSE events.
+
+    Args:
+        path: CSV of manual events.
+
+    Returns:
+        One row per event: start/end date and time, category and source.
+    """
     manual = pd.read_csv(path)
     start = pd.to_datetime(manual["start_date"] + " " + manual["start_time"])
     end = pd.to_datetime(manual["end_date"] + " " + manual["end_time"])
@@ -116,10 +147,13 @@ def main():
 
 
 def load_sse_events(path=sse_events_path):
-    """SSE events as start/end timestamps plus category.
+    """Load SSE events as timestamps.
 
-    Events with no recorded end are treated as ending when they started, i.e.
-    drawn as a single line rather than a span.
+    Args:
+        path: sse_events CSV.
+
+    Returns:
+        One row per event: start, end and category. A missing end is set to the start.
     """
     ev = pd.read_csv(path, index_col=0)
 
@@ -133,7 +167,15 @@ def load_sse_events(path=sse_events_path):
 
 
 def sse_day_flags(index, long_event_days=5):
-    """Flag days in index that fall in an SSE event (is_sse). Events of long_event_days+ days are skipped."""
+    """Flag the days that fall inside an SSE event.
+
+    Args:
+        index: Daily DatetimeIndex.
+        long_event_days: Events lasting this many days or more are ignored.
+
+    Returns:
+        Frame on index with a boolean is_sse column.
+    """
     sse_days = set()
     for _, e in load_sse_events().iterrows():
         days = pd.date_range(e["start"].normalize(), e["end"].normalize())

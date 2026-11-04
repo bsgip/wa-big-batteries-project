@@ -1,5 +1,4 @@
-"""How many stress events each definition gives, and when (season, start hour),
-and how the number of stress days per season has changed over time.
+"""How many stress events each definition gives, when (season, start hour), and the trend per season.
 
     python -m exploration.stress_definitions
 """

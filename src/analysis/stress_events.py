@@ -1,9 +1,4 @@
-"""Stress events under different definitions, each as one start time per event.
-
-Every definition comes out the same shape - a Series of event start times in
-local (Australia/Perth) wall-clock time, tz-naive - so they can be counted and
-compared side by side.
-"""
+"""Stress events under different definitions, each as a Series of event start times (Perth time, tz-naive)."""
 
 import pandas as pd
 
@@ -24,14 +19,13 @@ def review_event_starts() -> pd.Series:
 
 
 def advisory_starts(keywords: list[str] | None = None) -> pd.Series:
-    """Start of the period each AEMO market advisory mentioning keywords warns about.
+    """Stated period start of each AEMO advisory mentioning keywords, withdrawn ones included.
 
-    keywords: default sse_events.ADVISORY_KEYWORDS (LRC, LOR)
+    Args:
+        keywords: Words to look for; defaults to sse_events.ADVISORY_KEYWORDS.
 
-    The stated period start (the 17:00 in "17:00 - 21:00") on the advisory's Start
-    Interval date - Start Interval itself is when it was issued. Advisories that
-    state no period keep Start Interval. Withdrawn advisories are kept: each was
-    still a warning AEMO issued.
+    Returns:
+        Sorted start times, named advisories.
     """
     advisories = filter_advisories(pd.read_csv(raw_advisories_path, encoding="cp1252"), keywords)
 
@@ -51,10 +45,12 @@ def in_service_capacity_mw() -> pd.Series:
 
 
 def spare_capacity_mw() -> pd.Series:
-    """In-service energy injection capacity minus the energy injection dispatched, per interval (MW).
+    """In-service injection capacity minus injection dispatched, per interval.
 
-    Capacity offered as AVAILABLE (needs notice to come online) isn't counted:
-    with it added, spare capacity never falls below ~880 MW.
+    Capacity offered as AVAILABLE (needs notice to come online) isn't counted.
+
+    Returns:
+        MW per interval, named spare_capacity_mw.
     """
     dispatched = load("dispatch_total")["energyInjectionCapacity"]
     return (in_service_capacity_mw() - dispatched).sort_index().rename("spare_capacity_mw")
@@ -65,10 +61,15 @@ def low_spare_capacity_starts(
     threshold_mw: float = SPARE_CAPACITY_THRESHOLD_MW,
     merge_gap: pd.Timedelta = EVENT_MERGE_GAP,
 ) -> pd.Series:
-    """Start of each run of intervals with spare capacity below threshold_mw.
+    """Start of each run of intervals with spare capacity below a threshold.
 
-    Runs no more than merge_gap apart count as one event.
-    spare: from spare_capacity_mw
+    Args:
+        spare: Spare capacity (MW), from spare_capacity_mw.
+        threshold_mw: Spare capacity below this counts.
+        merge_gap: Runs no further apart than this are one event.
+
+    Returns:
+        Event start times (tz-naive), named spare_capacity.
     """
     low = spare.index[spare < threshold_mw].to_series()
     gap = low.diff()

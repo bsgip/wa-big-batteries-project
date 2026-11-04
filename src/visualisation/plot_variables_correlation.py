@@ -1,10 +1,4 @@
-"""Scatter any two columns of a frame against each other, with a binned
-summary line - the same treatment exploration/variables_correlations.py gives
-each battery panel, on a single pair of columns.
-
-The binning helpers live here rather than there so both share one copy;
-exploration imports visualisation, not the other way round.
-"""
+"""Scatter two columns of a frame against each other, with a binned summary line and Pearson r."""
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,15 +12,17 @@ from visualisation.plot_fleet_capacity import semester_labels
 
 
 def bin_edges(x: pd.Series, bins: int, method: str) -> np.ndarray:
-    """Bin boundaries for the median line.
+    """Bin edges for the summary line.
 
-    "width" splits the x range into equal-width bins - right when x is
-    roughly evenly spread (temperature, demand).
+    Args:
+        x: Values to bin.
+        bins: Number of bins.
+        method: "width" for equal-width bins, "quantile" for equal counts (for heavy-tailed x
+            such as price).
 
-    "quantile" puts an equal number of readings in each bin instead. Needed
-    for anything heavy-tailed: energy price runs -$1000 to $1100, but half
-    the readings sit between $65 and $111, so equal-width bins put almost
-    everything in one bin and leave the rest empty."""
+    Returns:
+        Bin edges.
+    """
     if method == "quantile":
         # duplicate edges where one value repeats across quantiles (price
         # pins at $738 for ~1% of intervals) would make pd.cut raise
@@ -39,20 +35,19 @@ def bin_edges(x: pd.Series, bins: int, method: str) -> np.ndarray:
 def binned_stat(
     x: pd.Series, y: pd.Series, bins: int, min_count: int, method: str = "width", stat: str = "median"
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Summary of y per x bin. The raw scatter is a 300k-point blob at any
-    sensible alpha, so this is the line that actually carries the
-    relationship. Bins holding fewer than `min_count` readings are dropped -
-    the sparsest few bins otherwise swing the line around on a handful of
-    readings.
+    """Summary of y in each x bin, placed at the bin's median x.
 
-    `stat` is "median" for a level like SOC, but must be "mean" for power:
-    batteries are idle more than half the time, so the median power is
-    exactly 0 in most bins (66 of 144 battery-hours) and hides the whole
-    charge/discharge response.
+    Args:
+        x: X values.
+        y: Y values, same index.
+        bins: Number of bins.
+        min_count: Bins with fewer readings are dropped.
+        method: "width" or "quantile"; see bin_edges.
+        stat: "median", or "mean" for power (whose median is 0 most of the time).
 
-    Each point is placed at the median x of its bin rather than the bin
-    midpoint, so a wide sparse bin plots where its readings actually are
-    instead of at the centre of an interval that may hold nothing."""
+    Returns:
+        (x positions, y values).
+    """
     if stat not in ("median", "mean"):
         raise ValueError(f"unknown stat {stat!r}; expected 'median' or 'mean'")
 
@@ -68,7 +63,7 @@ def binned_stat(
 
 
 def _point_groups(points: pd.DataFrame, color_by: str | None):
-    """(group label per point, group order, colour per group) for color_by, or (None, [], []) for no colouring."""
+    """(group label per point, group order, colour per group) for color_by, or (None, [], [])."""
     if color_by == "season_group":
         groups = season_group_of(points.index)
         levels = [s for s in SEASON_GROUPS if s in set(groups)]
@@ -102,7 +97,7 @@ def _draw_correlation(
     max_points: int | None = 20_000,
     color_by: str | None = "season_group",
 ) -> float:
-    """Scatter x_col against y_col on ax (SSE days in red if sse_df is given), with r and n in the legend; returns r."""
+    """Scatter x_col against y_col on ax (SSE days in red if sse_df), with r and n in the legend. Returns r."""
     data = df[[x_col, y_col]].dropna()
     if data.empty:
         ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center", va="center")
@@ -159,11 +154,29 @@ def plot_variables_correlation(
     max_points: int | None = 20_000,
     color_by: str | None = "season_group",
 ) -> float:
-    """Scatter x_col against y_col with Pearson r, save the figure and return r.
+    """Scatter x_col against y_col with Pearson r, and save the figure.
 
-    color_by: "season_group" (Summer / Shoulder / Winter), "season" (4 seasons), "semester" or None.
-    overlay_sse + sse_df: also plot SSE days in red.
-    See binned_stat for bins / bin_method / stat (only used with line_fit).
+    Args:
+        df: Frame holding both columns.
+        x_col: X column.
+        y_col: Y column.
+        x_label: X-axis label.
+        y_label: Y-axis label.
+        overlay_sse: Also plot sse_df's days in red.
+        sse_df: SSE days, same columns as df.
+        title: Figure title.
+        filename: Path under local_plots_dir; defaults to "corr_<x_col>_vs_<y_col><suffix>.png".
+        filename_suffix: Added to the default filename.
+        line_fit: Draw the binned summary line.
+        bins: Bins for the summary line.
+        min_bin_count: Bins with fewer readings are dropped.
+        bin_method: "width" or "quantile"; see bin_edges.
+        stat: "median" or "mean"; see binned_stat.
+        max_points: Points drawn; None draws all.
+        color_by: "season_group", "season", "semester" or None.
+
+    Returns:
+        Pearson r.
     """
     fig, ax = plt.subplots(figsize=(7, 6))
     r = _draw_correlation(
@@ -191,10 +204,22 @@ def plot_variables_correlation_by_season(
     filename_suffix: str = "",
     **draw_kwargs,
 ) -> dict[str, float]:
-    """2x2 grid: all days, then one panel per season group (Summer / Shoulder / Winter). Returns r per panel.
+    """Scatter x_col against y_col in a 2x2 grid: all days, then one panel per season group.
 
-    sse_df: also plot these SSE days in red, split the same way.
-    draw_kwargs: passed to the scatter (line_fit, bins, color_by, ...).
+    Args:
+        df: Frame holding both columns.
+        x_col: X column.
+        y_col: Y column.
+        x_label: X-axis label.
+        y_label: Y-axis label.
+        sse_df: SSE days to plot in red, split the same way.
+        title: Figure title.
+        filename: Path under local_plots_dir; defaults to one built from the column names.
+        filename_suffix: Added to the default filename.
+        **draw_kwargs: Passed to the scatter (line_fit, bins, color_by, ...).
+
+    Returns:
+        {panel label: Pearson r}.
     """
     panels = {"All days": df}
     sse_panels = {"All days": sse_df}
@@ -220,3 +245,50 @@ def plot_variables_correlation_by_season(
     fig.tight_layout()
     save_figure(fig, local_plots_dir / (filename or f"corr_{x_col}_vs_{y_col}{filename_suffix}_season_grid.png"))
     return r_by_panel
+
+
+def plot_predictor_correlations(df, flags, predictors, labels):
+    """Plot each predictor against fleet SOC: normal days, SSE days, both overlaid, and by season.
+
+    Args:
+        df: Daily feature table, from soc_features.build_feature_table.
+        flags: Frame with a boolean is_sse column, from sse_events.sse_day_flags.
+        predictors: Feature columns to plot.
+        labels: {column: axis label}, e.g. soc_features.FEATURE_LABELS.
+    """
+    normal = df.loc[~flags["is_sse"]]
+    sse = df.loc[flags["is_sse"]]
+
+    y_col = "fleet_soc_pct"
+    y_label = "Fleet SOC (%) at 17:30"
+
+    for col in predictors:
+        plot_variables_correlation(
+            normal, col, y_col, labels[col], y_label,
+            title="Variables Correlation - Normal Days",
+        )
+        plot_variables_correlation(
+            sse, col, y_col, labels[col], y_label,
+            title="Variables Correlation - SSE Days",
+            filename_suffix="_sse",
+        )
+        plot_variables_correlation(
+            normal, col, y_col, labels[col], y_label,
+            title="Variables Correlation\nNormal days: blue, SSE days: red",
+            filename_suffix="_sse_overlay",
+            overlay_sse=True,
+            sse_df=sse,
+        )
+        plot_variables_correlation(
+            normal, col, y_col, labels[col], y_label,
+            title="Variables Correlation\nNormal days: blue, SSE days: red",
+            filename_suffix="_sse_overlay_by_season",
+            overlay_sse=True,
+            sse_df=sse,
+            color_by="season_group",
+        )
+        plot_variables_correlation_by_season(
+            normal, col, y_col, labels[col], y_label,
+            sse_df=sse,
+            title=f"{labels[col]} vs fleet SOC by season\nNormal days coloured by season, SSE days in red",
+        )

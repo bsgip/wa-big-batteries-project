@@ -38,7 +38,15 @@ FEATURE_LABELS = {
 
 
 def add_soc_history_features(df):
-    """Add columns built from past fleet SOC: lags, rolling and seasonal medians, constants."""
+    """Add columns built from past fleet SOC: lags, rolling and seasonal medians, and constants.
+
+    Args:
+        df: Daily frame with a fleet_soc_pct column.
+
+    Returns:
+        df with soc_yesterday, soc_last_week, soc_30d_median, soc_7d_median,
+        soc_overall_median, soc_static_50, season, season_year and soc_season_median added.
+    """
     df["soc_yesterday"] = df["fleet_soc_pct"].shift(1)
     df["soc_last_week"] = df["fleet_soc_pct"].shift(7)
     df["soc_30d_median"] = df["fleet_soc_pct"].rolling("30D", closed="left", min_periods=28).median()
@@ -59,7 +67,16 @@ def add_soc_history_features(df):
 
 
 def add_demand_features(df, demand, demand_range):
-    """Add that day's peak demand and demand range (peak - trough)."""
+    """Add each day's peak demand and demand range.
+
+    Args:
+        df: Daily frame.
+        demand: 5-min demand (MW).
+        demand_range: Daily demand range (MW), indexed by date.
+
+    Returns:
+        df with peak_demand and demand_range added.
+    """
     peak_demand = demand.resample("D").max()
     df["peak_demand"] = df.index.normalize().map(peak_demand)
     df["demand_range"] = df.index.normalize().map(demand_range)
@@ -67,7 +84,16 @@ def add_demand_features(df, demand, demand_range):
 
 
 def add_energy_window_features(df, name, mw):
-    """Add <name>_midday (MWh, 09:00-15:00 that day) and <name>_24h (MWh, 24h before each row)."""
+    """Add the energy of a 5-min MW series over the midday window and the previous 24h.
+
+    Args:
+        df: Daily frame.
+        name: Column prefix, e.g. "dpv".
+        mw: 5-min power (MW).
+
+    Returns:
+        df with <name>_midday (MWh, 09:00-15:00 that day) and <name>_24h (MWh, 24h before each row).
+    """
     # 5-min MW values, so MWh = sum / 12; min_count=1 keeps days with no data as NaN, not 0
     midday = mw.between_time("09:00", "15:00").resample("D").sum(min_count=1) / 12
     df[f"{name}_midday"] = df.index.normalize().map(midday)
@@ -78,7 +104,16 @@ def add_energy_window_features(df, name, mw):
 
 
 def add_generation_features(df, pv_mw, wind_mw):
-    """Add net PV, wind and PV+wind energy (MWh) for 09:00-15:00 and the 24h before each row."""
+    """Add net PV, wind and PV + wind energy for the midday window and the previous 24h.
+
+    Args:
+        df: Daily frame.
+        pv_mw: 5-min utility PV (MW).
+        wind_mw: 5-min wind (MW).
+
+    Returns:
+        df with net_pv_*, net_wind_* and net_pv_wind_* columns (_midday and _24h, MWh).
+    """
     df = add_energy_window_features(df, "net_pv", pv_mw)
     df = add_energy_window_features(df, "net_wind", wind_mw)
     df = add_energy_window_features(df, "net_pv_wind", pv_mw + wind_mw)
@@ -86,7 +121,14 @@ def add_generation_features(df, pv_mw, wind_mw):
 
 
 def build_feature_table(at="17:30"):
-    """Fleet SOC at time `at` each day, with every feature column."""
+    """Build the daily feature table: fleet SOC at a time of day, with every feature column.
+
+    Args:
+        at: Time of day the SOC is taken at, e.g. "17:30".
+
+    Returns:
+        One row per day: fleet_soc_pct plus the SOC history, demand and generation features.
+    """
     soc = load_clean("soc")
     df = pd.DataFrame(soc["fleet_soc_pct"].at_time(at))
     df = add_soc_history_features(df)

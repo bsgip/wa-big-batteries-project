@@ -20,13 +20,16 @@ SERVICE_LABELS = {
 
 
 def plot_fcess_and_power_by_window(by_owner, title, filename):
-    """One column per owner. Top: average MW enabled for each FCESS service, per window of the day.
-    Bottom: average MW discharging (up) and charging (down) in the same windows. Rows share a y-axis.
+    """Plot, per owner, mean FCESS enablement (top) and mean discharging/charging (bottom) by window.
 
-    by_owner: {owner: (enabled, power)} - enabled: one row per window, one column per service (MW);
-        power: one row per window, columns "discharging" and "charging" (MW, both positive)
+    Args:
+        by_owner: {owner: (enabled, power)}. enabled: one row per window, one MW column per
+            service. power: one row per window, columns discharging and charging (MW, both positive).
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, axes).
+    Returns:
+        (fig, axes).
     """
     fig, axes = plt.subplots(2, len(by_owner), figsize=(6 * len(by_owner), 7.5), sharex=True, sharey="row",
                              gridspec_kw={"height_ratios": [1.4, 1]}, squeeze=False)

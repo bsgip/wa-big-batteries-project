@@ -1,12 +1,6 @@
-"""Turn extracted datasets into cleaned ones: reads
-data/processed_data/extracted/, writes data/processed_data/clean/.
+"""Clean the extracted datasets: data/processed_data/extracted/ -> data/processed_data/clean/.
+Takes seconds; uncomment what you want. Fields with no cleaning step (e.g. price) are used from extracted/.
 
-Cheap to re-run (seconds) - do it whenever cleaning logic or a constant it
-depends on changes (a battery capacity, a sentinel value). Uncomment what you
-want; fields with no cleaning step (e.g. price) aren't here at all and
-get used straight from extracted/.
-
-Usage:
     python -m data_processing.main
 """
 

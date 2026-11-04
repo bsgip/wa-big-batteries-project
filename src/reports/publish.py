@@ -1,23 +1,5 @@
-"""Build a self-contained HTML copy of a report notebook, for GitHub Pages.
-
-Manual step, run by hand whenever a report is ready to (re)publish - no CI,
-no watching for pushes. Markdown image links in the report notebooks (e.g.
-`![](../../data/plots/2025-08-25_day.png)`) point at data/, which is
-gitignored, so a plain `jupyter nbconvert --to html` would keep those same
-relative links and break once the output is served from docs/ on its own.
-This embeds every local image as a base64 data URI first, so the resulting
-HTML has no dependency on data/ existing at all - copy/paste-safe, and safe
-to commit to docs/ for Pages to serve.
-
-The page itself is our own template, not nbconvert's JupyterLab one:
-nbconvert's "basic" template renders just the cells, and this module wraps
-them in a page with a collapsible sidebar table of contents (built from the
-markdown headings), a sticky bar showing the current section, and styling
-for figures and tables.
-
-Header: the notebook's first cell becomes the page header (eyebrow line,
-title, one-line summary, fact pills) - see pop_header() for the format. An
-"Updated <date>" pill is added automatically.
+"""Build a self-contained HTML copy of a report notebook (images embedded) for GitHub Pages.
+The notebook's first cell becomes the page header - see pop_header().
 
 Usage:
     uv run python -m reports.publish [notebook_path] [output_path]
@@ -60,6 +42,7 @@ _IMG_LINK = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
 
 def _embed_one_image(match: re.Match, notebook_dir: Path) -> str:
+    """Replacement for one markdown image match: a base64 data URI if it's a local file, else unchanged."""
     alt, src = match.group(1), match.group(2)
     if src.startswith(("http://", "https://", "data:")):
         return match.group(0)
@@ -74,9 +57,12 @@ def _embed_one_image(match: re.Match, notebook_dir: Path) -> str:
 
 
 def embed_local_images(nb, notebook_dir: Path) -> None:
-    """Rewrite every markdown-cell image link that points at a local file
-    into a base64 data URI, in place. http(s) links and existing data URIs
-    are left untouched."""
+    """Replace local image links in markdown cells with base64 data URIs, in place.
+
+    Args:
+        nb: Notebook.
+        notebook_dir: Folder the image links are relative to.
+    """
     for cell in nb.cells:
         if cell.cell_type == "markdown":
             cell.source = _IMG_LINK.sub(lambda m: _embed_one_image(m, notebook_dir), cell.source)
@@ -98,18 +84,24 @@ def _inline_md(text: str) -> str:
 
 
 def pop_header(nb, fallback_title: str) -> dict:
-    """Read the page header from the notebook's first cell, and remove that
-    cell so it isn't rendered again as part of the report. The cell may hold,
-    in this order (everything except the heading is optional):
+    """Read the page header from the notebook's first cell and remove that cell.
+
+    The cell may hold, in this order (all but the title optional):
 
         ANU × AEMO WA · Storage behaviour statistics (D2)   <- eyebrow
         # Report title                                      <- title
         > One-sentence summary of what the report answers.  <- lede
         - Data: Dec 2024 – Aug 2026                         <- pills
-        - Draft
 
-    If the first cell has anything else in it, it's left alone and the title
-    falls back to notebook metadata "title", then the file name."""
+    A first cell with anything else in it is left alone.
+
+    Args:
+        nb: Notebook.
+        fallback_title: Title to use if neither the cell nor the notebook metadata has one.
+
+    Returns:
+        {"eyebrow", "title", "lede", "pills"}.
+    """
     header = {"eyebrow": "", "title": nb.metadata.get("title") or fallback_title, "lede": "", "pills": []}
     if not nb.cells or nb.cells[0].cell_type != "markdown":
         return header
@@ -154,10 +146,12 @@ _NUMERIC = re.compile(r"^[-+−]?[\d,]*\.?\d+\s*%?$")
 
 
 def _is_blank(node) -> bool:
+    """Whether node is whitespace or a <br>."""
     return (isinstance(node, NavigableString) and not node.strip()) or getattr(node, "name", None) == "br"
 
 
 def _heading_label(h) -> str:
+    """Text of a heading, without its anchor link."""
     return "".join(
         s for s in h.find_all(string=True) if not (s.parent.name == "a" and "anchor-link" in s.parent.get("class", []))
     ).strip()
@@ -166,7 +160,12 @@ def _heading_label(h) -> str:
 def enhance_body(body: str) -> tuple[str, list[dict]]:
     """Restyle nbconvert's cell HTML and collect the headings.
 
-    Returns (body_html, contents_tree)."""
+    Args:
+        body: HTML from nbconvert's basic template.
+
+    Returns:
+        (body_html, contents_tree), where contents_tree is the nested headings for the sidebar.
+    """
     soup = BeautifulSoup(body, "html.parser")
 
     # Code cells with no output (inputs are excluded) render as empty boxes.
@@ -272,6 +271,7 @@ _ICON_UP = (
 
 
 def _render_toc(nodes: list[dict], depth: int = 1) -> str:
+    """Nested <ul> table of contents for heading nodes."""
     items = []
     for n in nodes:
         num = f'<span class="num">{html.escape(n["num"])}</span>' if n["num"] else ""
@@ -617,6 +617,18 @@ _PAGE = """<!doctype html>
 
 
 def render_page(header: dict, body: str, tree: list[dict], source_name: str, has_math: bool) -> str:
+    """Wrap the report body in the full page: header, sidebar contents and styles.
+
+    Args:
+        header: From pop_header.
+        body: From enhance_body.
+        tree: Headings, from enhance_body.
+        source_name: Notebook file name, shown in the footer.
+        has_math: Whether to load MathJax.
+
+    Returns:
+        The page HTML.
+    """
     today = dt.date.today()
     date_str = f"{today.day} {today:%b %Y}"
     title = header["title"]
@@ -644,6 +656,12 @@ def render_page(header: dict, body: str, tree: list[dict], source_name: str, has
 
 
 def build_html(notebook_path: Path, output_path: Path) -> None:
+    """Build the self-contained HTML page for a report notebook.
+
+    Args:
+        notebook_path: Report notebook.
+        output_path: HTML file to write.
+    """
     nb = nbformat.read(notebook_path, as_version=4)
     embed_local_images(nb, notebook_path.parent)
     header = pop_header(nb, fallback_title=notebook_path.stem)

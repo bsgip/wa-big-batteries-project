@@ -3,35 +3,14 @@
     python -m exploration.owner_fleet_comparison
 """
 
-import matplotlib.pyplot as plt
-
 from analysis.energy import discharge_cycles_by_window
 from analysis.owner_fleets import OWNER_BATTERIES, owner_fleet_soc_pct
 from tools.constants import PEAK_ESROI_START, battery_capacity_MWh, commissioning_dates
 from tools.io import load_clean
-from tools.paths import local_plots_dir
-from tools.plot_style import SOC_BINS, save_figure
 from visualisation.plot_cycles import plot_cycles_by_window
-from visualisation.plot_distributions import _plot_one_distribution
+from visualisation.plot_distributions import plot_owner_soc_distributions
 
 FOLDER = "owner_fleet_comparison"
-
-
-def plot_owner_soc_distributions(owner_soc, title, filename):
-    """One SOC histogram per owner (column of owner_soc), side by side on the same 0-100% axis."""
-    owners = list(owner_soc.columns)
-    fig, axes = plt.subplots(1, len(owners), figsize=(6 * len(owners), 5), sharey=True, squeeze=False)
-
-    for ax, owner in zip(axes[0], owners):
-        _plot_one_distribution(ax, owner_soc[owner], bicolor=False, bins=SOC_BINS)
-        ax.set_xlim(0, 100)
-        ax.set_title(owner)
-        ax.set_xlabel("Fleet SOC (%)")
-    axes[0][0].set_ylabel("Density")
-
-    fig.suptitle(title)
-    fig.tight_layout()
-    save_figure(fig, local_plots_dir / filename)
 
 
 def main():

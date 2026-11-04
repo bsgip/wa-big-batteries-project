@@ -6,5 +6,12 @@ from tools.constants import battery_codes, codes_in
 
 
 def process(df: pd.DataFrame) -> pd.DataFrame:
-    """Extracted RCOQ (one MW column per facility) -> only the fleet battery columns."""
+    """Clean extracted RCOQ.
+
+    Args:
+        df: Extracted RCOQ, one MW column per facility.
+
+    Returns:
+        Only the fleet battery columns.
+    """
     return df[codes_in(df, battery_codes)]

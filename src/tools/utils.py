@@ -4,6 +4,7 @@ from pprint import pprint
 
 
 def search_keyword(filepath, keyword: str):
+    """Print every JSON path in filepath that contains keyword (lower-case match)."""
     hits = set()
     with open(filepath, "rb") as f:
         for prefix, event, value in ijson.parse(f):

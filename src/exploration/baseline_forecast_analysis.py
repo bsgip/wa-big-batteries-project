@@ -1,6 +1,6 @@
 import pandas as pd
 
-from analysis.baseline_forecast import BASELINES, forecast_error_scores
+from analysis.baseline_forecast import forecast_error_scores_by_day_type
 from analysis.soc_features import build_feature_table
 from analysis.sse_events import sse_day_flags
 
@@ -8,24 +8,15 @@ from analysis.sse_events import sse_day_flags
 pd.set_option("display.max_columns", None)
 
 
-def print_error_summary(df, flags):
-    """Print baseline forecast error scores for all, normal and SSE days."""
-    subsets = {
-        "All": df,
-        "Normal": df.loc[~flags["is_sse"]],
-        "SSE": df.loc[flags["is_sse"]],
-    }
-    for day_type, d in subsets.items():
-        print("\n======================================\n"
-              f"Forecast Error Metrics - {day_type} Days"
-              "\n======================================\n")
-        print(forecast_error_scores(d, BASELINES))
-
-
 def main():
     df = build_feature_table()
     flags = sse_day_flags(df.index)
-    print_error_summary(df, flags)
+
+    for day_type, scores in forecast_error_scores_by_day_type(df, flags).items():
+        print("\n======================================\n"
+              f"Forecast Error Metrics - {day_type} Days"
+              "\n======================================\n")
+        print(scores)
 
 
 if __name__ == "__main__":

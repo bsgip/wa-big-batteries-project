@@ -9,18 +9,22 @@ from tools.plot_style import save_figure
 
 
 def plot_offered_vs_rcoq_grid(offered, rcoq, below, capacity_mw, title, filename, ncols=2):
-    """One panel per battery: injection offered at each interval with an obligation,
-    against its RCOQ, with the intervals offered below it in red.
-
-    offered: offered injection (MW) per interval, one column per battery - from obligations.offered_injection_mw
-    rcoq: RCOQ (MW), same index and columns
-    below: from obligations.below_rcoq, same index and columns
-    capacity_mw: {code: rated MW}, sets each panel's y-range
+    """Plot, per battery, the injection offered against RCOQ, with intervals below RCOQ in red.
 
     Only intervals with an obligation (RCOQ > 0) and an offer are drawn.
 
-    Returns (fig, axes, summary) - summary has, per battery, the intervals with an
-    obligation and an offer, how many were below RCOQ, and on how many days.
+    Args:
+        offered: Offered injection (MW), from obligations.offered_injection_mw.
+        rcoq: RCOQ (MW), same index and columns.
+        below: From obligations.below_rcoq, same index and columns.
+        capacity_mw: {code: rated MW}; sets each panel's y-range.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        ncols: Panels per row.
+
+    Returns:
+        (fig, axes, summary), where summary has per battery the intervals with an obligation and
+        an offer, how many were below RCOQ, and on how many days.
     """
     codes = list(rcoq.columns)
     nrows = math.ceil(len(codes) / ncols)

@@ -8,13 +8,16 @@ WINDOW_COLORS = ["C0", "C1", "C2", DISCHARGE_COLOR]
 
 
 def plot_cycles_by_window(cycles, owners, title, filename):
-    """One stacked bar per battery: average equivalent full cycles per day, split by part of the day.
+    """Plot one stacked bar per battery of its average cycles per day, split by window of the day.
 
-    cycles: from energy.discharge_cycles_by_window - one row per battery, one column per window
-    owners: {code: owner name}, written under each battery's name; batteries are drawn in the
-        order of this mapping
+    Args:
+        cycles: From energy.discharge_cycles_by_window (one row per battery, one column per window).
+        owners: {code: owner}, written under each battery; batteries are drawn in this order.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
 
-    Returns (fig, ax).
+    Returns:
+        (fig, ax).
     """
     codes = [code for code in owners if code in cycles.index]
     cycles = cycles.loc[codes]

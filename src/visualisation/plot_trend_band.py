@@ -24,8 +24,7 @@ SSE_CATEGORY_COLORS = {
 
 
 def _draw_sse_events(ax, events, xlim):
-    """Shade each SSE event on ax: a span if it runs over more than a day,
-    a single line if not. Returns legend handles, one per category present."""
+    """Shade each SSE event on ax (span if over a day, else a line). Returns one legend handle per category."""
     lo, hi = xlim
 
     # the series may be tz-aware (Australia/Perth); the event times in the csv
@@ -75,10 +74,7 @@ LOW_COVERAGE_COLOR = "0.85"
 
 
 def _period_coverage(s, freq):
-    """Per period: the share of the values it should have that s actually has, and where it ends.
-
-    "Should have" is the period's length over the series' usual spacing, so 5-min,
-    hourly, daily and once-a-day series are all judged the same way."""
+    """Per period: the share of expected values s has (from its usual spacing), and the period end."""
     counts = s.resample(freq).count()
     end = counts.index + to_offset(freq)
     spacing = s.index.to_series().diff().median()
@@ -87,11 +83,7 @@ def _period_coverage(s, freq):
 
 
 def _shade_low_coverage(ax, coverage, min_coverage=MIN_COVERAGE):
-    """Grey span over each period left out for having too little data.
-
-    coverage: frame with coverage and end columns, indexed by period start (from _period_coverage)
-    Returns a legend handle for the shading, or None if no period was left out.
-    """
+    """Shade each period with coverage below min_coverage grey. Returns a legend handle, or None."""
     low = coverage[coverage["coverage"] < min_coverage]
     for start, row in low.iterrows():
         ax.axvspan(start, row["end"], color=LOW_COVERAGE_COLOR, lw=0, zorder=0)
@@ -101,7 +93,7 @@ def _shade_low_coverage(ax, coverage, min_coverage=MIN_COVERAGE):
 
 
 def _prepare_series(df, col=None, date_col=None):
-    """One sorted, datetime-indexed Series out of whatever was passed in."""
+    """One sorted, datetime-indexed Series from a Series or frame."""
     # accept a Series as well as a DataFrame
     if isinstance(df, pd.Series):
         df = df.to_frame(name=df.name if df.name is not None else "value")
@@ -122,12 +114,13 @@ def _prepare_series(df, col=None, date_col=None):
 
 
 def _period_summary(s, freq, min_coverage=MIN_COVERAGE):
-    """Per-period median/mean/percentiles, plus the values that fall outside
-    their own period's 1.5xIQR fences. Returns (summary frame, outlier values).
+    """Per-period statistics of s, at any frequency.
 
-    s can be at any frequency (5-min, hourly, daily): every value in a period
-    goes into that period's statistics. Periods with less than min_coverage of
-    their values keep n, coverage and end but get NaN statistics and no outliers."""
+    Returns:
+        (summary, outliers). summary has median, mean, percentiles, n, coverage and end per
+        period (NaN statistics below min_coverage); outliers are values outside their period's
+        1.5 x IQR fences.
+    """
     g = s.resample(freq)
     m = pd.DataFrame(
         {
@@ -166,7 +159,7 @@ def _period_summary(s, freq, min_coverage=MIN_COVERAGE):
 
 
 def _draw_band(ax, m, outliers, unit, show_mean=True, show_outliers=True):
-    """The series itself: p10-p90 and p25-p75 bands, median, mean, outliers."""
+    """Draw the p10-p90 and p25-p75 bands, median, mean and outliers on ax."""
     ax.fill_between(m.index, m["p10"], m["p90"], alpha=0.18, color="C0", label="p10–p90")
     ax.fill_between(m.index, m["p25"], m["p75"], alpha=0.30, color="C0", label="p25–p75")
     ax.plot(m.index, m["median"], color="C0", lw=2, marker="o", ms=4, label=f"{unit} median")
@@ -201,11 +194,7 @@ def _format_season_axis(ax):
 
 
 def _title_and_legend_above(ax, title, handles=None, extra=None):
-    """Set the title and put the legend in one row between the title and the plot, so it never covers data.
-
-    handles: legend entries to use instead of the labelled artists on ax
-    extra: one more entry to add at the end (e.g. from _shade_low_coverage), skipped if None
-    """
+    """Set the title, with the legend in one row between it and the plot. Returns the legend."""
     if handles is None:
         handles = ax.get_legend_handles_labels()[0]
     if extra is not None:
@@ -229,21 +218,24 @@ def trend_band_plot(
     title=None,
     filename=None,
 ):
-    """
-    Median line with a shaded p10-p90 band, per month or per season.
-    For SSE events alongside the band, use trend_band_event_plot.
+    """Plot the median of each month or season with p10-p90 and p25-p75 bands.
 
-    df: DataFrame or Series of values at any frequency (5-min, hourly, daily) -
-        every value in a month/season goes into that period's median and bands
-    col: name of the value column (defaults to the only/first numeric column)
-    date_col: name of the date column, if dates aren't already the index
-    period: 'month' or 'season' - how values are grouped
-    show_mean: also draw the period mean as a dashed line
-    show_outliers: scatter the values falling outside that period's 1.5xIQR fences
-    min_coverage: periods with less than this share of their values are left out and shaded grey
-    ylabel: y-axis label (defaults to the column name)
-    title: plot title (defaults to "<column>: <period> median with spread")
-    filename: plot filename (defaults to "<column>_<period>_trend.png")
+    Periods with less than min_coverage of their data are left out and shaded grey.
+
+    Args:
+        df: Values at any frequency (5-min, hourly, daily), as a Series or frame.
+        col: Value column; defaults to the only or first numeric column.
+        date_col: Date column, if dates aren't the index.
+        period: "month" or "season".
+        show_mean: Also draw the period mean.
+        show_outliers: Draw values outside their period's 1.5 x IQR fences.
+        min_coverage: Minimum share of a period's values needed to draw it.
+        ylabel: Y-axis label; defaults to the column name.
+        title: Figure title; defaults to "<column>: <period> median with spread".
+        filename: Path under local_plots_dir; defaults to "<column>_<period>_trend.png".
+
+    Returns:
+        (fig, ax, summary), where summary is the per-period statistics.
     """
     if period not in _PERIOD_SPECS:
         raise ValueError(f"period must be one of {list(_PERIOD_SPECS)}, got {period!r}")
@@ -272,19 +264,7 @@ def trend_band_plot(
 
 
 def _merge_events(events, long=pd.Timedelta(days=1)):
-    """Collapse overlapping same-day events of the same category into one.
-
-    The register often carries several advisories for one situation - three
-    separate heatwave entries on the same afternoon, say. Drawn as-is they
-    overprint into a single thicker mark that reads as one event anyway, so
-    merging them loses nothing and keeps the strip honest about how many
-    distinct episodes there were.
-
-    Events lasting `long` or more are never merged, and never absorb a short
-    one. Without that rule a single wide event swallows everything inside it:
-    the May-Oct 2024 outage alone spans 158 days and would hide the fourteen
-    separate evening outages that fall within it.
-    """
+    """Merge overlapping same-day events of one category; events of `long` or more are never merged."""
     duration = events["end"] - events["start"]
     spans = events[duration >= long]
     short = events[duration < long]
@@ -315,13 +295,17 @@ def _merge_events(events, long=pd.Timedelta(days=1)):
 
 
 def _draw_event_strip(ax, events, xlim, style="auto", min_span_frac=0.004):
-    """One lane per SSE category, each event a bar (multi-day) or tick (single
-    day) in its lane. Keeps events off the main axes entirely, so density in a
-    busy week no longer paints over the data.
+    """Draw SSE events on ax, one lane per category.
 
-    style: 'auto' - span if the event runs a day or more, tick if not
-        'span' - always a span, widened to stay visible if very short
-        'line' - always a tick at the start time
+    Args:
+        ax: Axes for the strip.
+        events: SSE events, from load_sse_events.
+        xlim: X-axis limits of the main plot.
+        style: "auto" (span if a day or longer, tick if not), "span" or "line".
+        min_span_frac: Minimum span width, as a share of the axis.
+
+    Returns:
+        The events drawn.
     """
     if style not in ("auto", "span", "line"):
         raise ValueError(f"style must be 'auto', 'span' or 'line', got {style!r}")
@@ -385,17 +369,16 @@ def trend_band_event_plot(
     title=None,
     filename=None,
 ):
-    """
-    The same band as trend_band_plot, with SSE events in their own strip
-    below instead of shaded over the data.
+    """Plot trend_band_plot with SSE events in a strip below the band.
 
-    Same arguments as trend_band_plot, minus show_sse (the strip is the point
-    here), plus:
+    Args:
+        df, col, date_col, period, show_mean, show_outliers, min_coverage, ylabel, title,
+            filename: As in trend_band_plot.
+        event_style: "auto" (span if a day or longer, tick if not), "span" or "line".
+        merge_events: Merge overlapping same-day events of the same category.
 
-    event_style: 'auto' (span if a day or longer, tick if not), 'span', 'line'
-    merge_events: collapse overlapping events of the same category into one
-
-    Returns (fig, (main_ax, event_ax), summary).
+    Returns:
+        (fig, (main_ax, event_ax), summary).
     """
     if period not in _PERIOD_SPECS:
         raise ValueError(f"period must be one of {list(_PERIOD_SPECS)}, got {period!r}")
@@ -438,19 +421,19 @@ def trend_band_event_plot(
 
 
 def stacked_median_plot(panels, period="month", min_coverage=MIN_COVERAGE, title=None, filename=None):
-    """
-    Period median of several daily series, one panel each, stacked on a shared
-    time axis. Each panel keeps its own y-scale, so series of very different
-    size (system demand vs battery discharge) can be read month against month
-    without one flattening the other.
+    """Plot the period median of several daily series, one panel each on a shared time axis.
 
-    panels: list of (series, ylabel, color), drawn top to bottom
-    period: 'month' or 'season' - how days are grouped
-    min_coverage: periods with less than this share of their values are left out and shaded grey
-    title: figure title
-    filename: plot filename (defaults to "stacked_<period>_median.png")
+    Each panel has its own y-scale.
 
-    Returns (fig, axes, medians) - medians has one column per panel, named by its ylabel.
+    Args:
+        panels: [(series, ylabel, colour), ...], drawn top to bottom.
+        period: "month" or "season".
+        min_coverage: Minimum share of a period's values needed to draw it.
+        title: Figure title.
+        filename: Path under local_plots_dir; defaults to "stacked_<period>_median.png".
+
+    Returns:
+        (fig, axes, medians), where medians has one column per panel, named by its ylabel.
     """
     if period not in _PERIOD_SPECS:
         raise ValueError(f"period must be one of {list(_PERIOD_SPECS)}, got {period!r}")
@@ -494,17 +477,18 @@ def stacked_median_plot(panels, period="month", min_coverage=MIN_COVERAGE, title
 
 
 def mark_period_medians(ax, s, periods, value_format="{:,.0f}", color="0.25", legend_loc="upper left"):
-    """Dashed line at the median of s over each period, spanning that period, with the
-    medians and the change from the first period to the last as a legend entry.
+    """Draw a dashed line at the median of s over each period, with the medians and change in the legend.
 
-    s: the series the panel was drawn from (any frequency)
-    periods: [(start, end), ...] - compare like with like, e.g. the same months a year apart,
-        so seasonality doesn't read as change
-    value_format: how a median is written, e.g. "{:,.0f} MWh" or "{:.1f}%"
-    legend_loc: where the legend goes - the default sits in the headroom added above the data;
-        move it if something else (e.g. mark_commissioning labels) is already up there
+    Args:
+        ax: Axes to draw on.
+        s: The series the panel was drawn from.
+        periods: [(start, end), ...], e.g. the same months in different years.
+        value_format: Format of a median, e.g. "{:,.0f} MWh".
+        color: Line colour.
+        legend_loc: Legend position.
 
-    Returns the medians, one per period.
+    Returns:
+        The median of each period.
     """
     tz = s.index.tz
     medians = []
@@ -529,13 +513,14 @@ def mark_period_medians(ax, s, periods, value_format="{:,.0f}", color="0.25", le
 
 
 def mark_commissioning(ax, dates, capacity):
-    """Dashed line at each unit's commissioning date, labelled with the MWh it adds.
+    """Draw a dashed line at each unit's commissioning date, labelled with the MWh it adds.
 
-    dates: {code: commissioning timestamp}, from constants.commissioning_dates(...)
-    capacity: {code: MWh}, e.g. battery_capacity_MWh
+    Units commissioned at or before the left edge of the axis aren't marked.
 
-    Units commissioned at or before the left edge of the axis aren't marked:
-    for those the "commissioning date" is just where the data starts.
+    Args:
+        ax: Axes to draw on.
+        dates: {code: commissioning timestamp}, from constants.commissioning_dates.
+        capacity: {code: MWh}, e.g. battery_capacity_MWh.
     """
     left = ax.get_xlim()[0]
     for code, start in sorted(dates.items(), key=lambda kv: kv[1]):
@@ -572,23 +557,22 @@ def period_box_plot(
     title=None,
     filename=None,
 ):
-    """
-    One box per month (or season) of daily values, on the same time axis as
-    the trend plots.
+    """Plot one box per month or season of daily values, on the trend plots' time axis.
 
-    df: DataFrame or Series with daily values
-    col: name of the value column (defaults to the only/first numeric column)
-    date_col: name of the date column, if dates aren't already the index
-    period: 'month' or 'season' - how days are grouped
-    whis: whisker percentiles (default 10th-90th, same as the trend plots' outer band);
-        days beyond them are drawn as dots
-    ylim: (bottom, top) of the y-axis, e.g. (0, 100) for a % (defaults to fitting the data)
-    min_coverage: periods with less than this share of their values get no box and are shaded grey
-    ylabel: y-axis label (defaults to the column name)
-    title: plot title
-    filename: plot filename (defaults to "<column>_<period>_box.png")
+    Args:
+        df: Daily values, as a Series or frame.
+        col: Value column; defaults to the only or first numeric column.
+        date_col: Date column, if dates aren't the index.
+        period: "month" or "season".
+        whis: Whisker percentiles; days beyond are drawn as dots.
+        ylim: (bottom, top) of the y-axis; None fits the data.
+        min_coverage: Periods with less than this share of their values get no box.
+        ylabel: Y-axis label; defaults to the column name.
+        title: Figure title.
+        filename: Path under local_plots_dir; defaults to "<column>_<period>_box.png".
 
-    Returns (fig, ax, summary) - summary is the per-period median/percentiles/n.
+    Returns:
+        (fig, ax, summary), where summary is the per-period median, percentiles and n.
     """
     if period not in _PERIOD_SPECS:
         raise ValueError(f"period must be one of {list(_PERIOD_SPECS)}, got {period!r}")

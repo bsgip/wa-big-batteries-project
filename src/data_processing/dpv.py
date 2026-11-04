@@ -1,7 +1,4 @@
-"""Cleaning for distributed (rooftop) PV, from the extracted dispatch_condition frame.
-
-process() -> clean/dpv.parquet.
-"""
+"""Rooftop PV (DPV) -> clean/dpv.parquet."""
 
 import logging
 
@@ -17,7 +14,14 @@ DPV_CLEAN_FROM = "2024-11-07"
 
 
 def process(df: pd.DataFrame) -> pd.DataFrame:
-    """Extracted dispatch_condition frame -> one "dpv" column (MW): NaN before DPV_CLEAN_FROM, negatives set to 0."""
+    """Clean rooftop PV.
+
+    Args:
+        df: Extracted dispatch_condition frame.
+
+    Returns:
+        One "dpv" column (MW): NaN before DPV_CLEAN_FROM, negatives set to 0.
+    """
     dpv = df[DPV_COLUMN].clip(lower=0)
 
     before = dpv.index < pd.Timestamp(DPV_CLEAN_FROM, tz=dpv.index.tz)

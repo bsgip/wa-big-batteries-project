@@ -1,5 +1,4 @@
-"""Do some batteries charge while others discharge? Share of the batteries' flow that cancels out,
-within and across owners - by hour of day (when is the fleet most synchronised?) and by month.
+"""Do some batteries charge while others discharge? Share of flow cancelling out, by hour and by month.
 
     python -m exploration.fleet_coordination
 """

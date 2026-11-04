@@ -5,12 +5,16 @@ from tools.plot_style import save_figure
 
 
 def plot_error_by_lead_time(stats, title, filename, xticks=range(0, 25, 4)):
-    """One panel per window of the day: median forecast error by lead time, with p25–p75 and
-    p10–p90 bands (same style as trend_band_plot). Dashed line at zero error.
+    """Plot median forecast error by lead time with p25-p75 and p10-p90 bands, one panel per window.
 
-    stats: {window label: DataFrame from price_forecast.error_by_lead_time}, drawn left to right
+    Args:
+        stats: {window label: frame from price_forecast.error_by_lead_time}, drawn left to right.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
+        xticks: Lead times (hours) to tick.
 
-    Returns (fig, axes).
+    Returns:
+        (fig, axes).
     """
     fig, axes = plt.subplots(1, len(stats), figsize=(6 * len(stats), 5), sharey=True, squeeze=False)
     axes = axes[0]

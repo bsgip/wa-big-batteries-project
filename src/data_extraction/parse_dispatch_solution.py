@@ -1,30 +1,5 @@
-"""Parse per-dispatch-interval fields out of every
-dispatchSolution/dispatchData file downloaded by download.py, in a single
-parallel pass over the corpus.
-
-The corpus is ~324k files of ~20MB, so re-walking it once per field would be
-prohibitive (~45min per walk on 12 workers) - instead, every field has a small
-extractor registered in _FIELDS, and build_dispatch_solution_data() walks each
-file exactly once, running every requested extractor against the one dispatch
-interval that file is authoritative for.
-
-The fields mirror parse_predispatch_solution.py (same JSON keys, same column
-names), plus availableQuantities and inServiceQuantities - so the realised
-dispatch outcome can be lined up against what pre-dispatch forecast for it.
-
-Every output is indexed by dispatch_interval. Per-interval fields are one row
-per interval; per-facility fields are either pivoted wide (one column per
-facility, like power.parquet) or long, with dispatch_interval repeated.
-
-Files are processed one month at a time and each month's rows are turned into
-DataFrames before moving on - holding the raw rows for all ~324k intervals at
-once (~30M+ for the energy schedule alone) would take tens of GB.
-
-To add a new field: write a small `_extract_<name>(item) -> list[dict]`
-function (one solutionData item in, that field's rows out) and a matching
-finisher (raw row list in, final DataFrame out), then add both to _FIELDS.
-Nothing else needs to change here - see data_extraction/catalog.py to make it
-loadable by name.
+"""Parse fields from every dispatchSolution/dispatchData file in one parallel pass, a month at a time.
+Each file is used only for its own interval. To add a field: write an extractor and finisher, add them to _FIELDS.
 """
 
 import functools
@@ -62,8 +37,14 @@ _TIMESTAMP = "datetime64[us, Australia/Perth]"
 
 
 def _extract_price(item: dict) -> list[dict]:
-    """Clearing price in every market service for the interval: energy ($/MWh)
-    and the five FCESS markets."""
+    """Clearing price in energy ($/MWh) and the five FCESS markets.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row.
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -78,9 +59,15 @@ def _extract_price(item: dict) -> list[dict]:
 
 
 def _extract_price_setting(item: dict) -> list[dict]:
-    """What set the price in each market service: one row per contribution.
-    A market service with no contributions still gets one row (contribution
-    columns empty), so its isMarketServiceCapped flag isn't lost."""
+    """What set the price in each market service.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per contribution per market service, or one empty row for a service with
+        none (to keep isMarketServiceCapped).
+    """
     rows = []
     for service in item["priceSetting"]:
         base = {
@@ -103,8 +90,7 @@ def _extract_price_setting(item: dict) -> list[dict]:
 
 
 def _extract_dict(key: str):
-    """A flat {name: number} dict on the item (marketShortfalls, dispatchTotal,
-    ...) as one row, its keys kept verbatim as column names."""
+    """Extractor for a flat {name: number} dict on the item (e.g. marketShortfalls), as one row."""
 
     def extract(item: dict) -> list[dict]:
         return [{"dispatch_interval": item["dispatchInterval"], **item[key]}]
@@ -113,9 +99,14 @@ def _extract_dict(key: str):
 
 
 def _extract_projected_level(item: dict) -> list[dict]:
-    """projectedChargeLevel / projectedDischargeLevel per facility, only where
-    at least one isn't None. These keys only exist in files from late Oct 2025
-    on, and in practice are only ever non-None for batteries."""
+    """projectedChargeLevel / projectedDischargeLevel per facility (files from late Oct 2025 on).
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per facility with either value set.
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -129,10 +120,14 @@ def _extract_projected_level(item: dict) -> list[dict]:
 
 
 def _extract_energy_schedule(item: dict) -> list[dict]:
-    """Dispatched energy quantity (MW) per facility from schedule[marketService
-    == "energy"] - the solver's target for every facility in the solve:
-    thermal, wind/solar, batteries (negative = charging) and demand side
-    programmes alike. Not measured output - that's power.parquet."""
+    """Dispatched energy per facility: a dispatch target, not measured output.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per facility (MW; batteries negative when charging).
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -146,8 +141,14 @@ def _extract_energy_schedule(item: dict) -> list[dict]:
 
 
 def _extract_fcess_schedule(item: dict) -> list[dict]:
-    """Enabled FCESS quantity (MW) per facility per FCESS market, from
-    schedule[marketService != "energy"], including facilities enabled for 0 MW."""
+    """Enabled FCESS quantity per facility per FCESS market.
+
+    Args:
+        item: One solutionData item from the JSON.
+
+    Returns:
+        One row per facility per market (MW, including 0).
+    """
     return [
         {
             "dispatch_interval": item["dispatchInterval"],
@@ -166,19 +167,17 @@ def _extract_fcess_schedule(item: dict) -> list[dict]:
 
 
 def _rows_to_df(rows: list[dict], columns: list[str]) -> pd.DataFrame:
-    """Raw rows to a DataFrame keeping only the rows from the file that wins
-    for each interval.
+    """Turn raw rows into a DataFrame, keeping the correction file's rows where an interval has one.
 
-    ~0.6% of intervals have both a regular file and a correction/annotation
-    variant (see _LEADING_TIMESTAMP), and the correction should win - never
-    more than one correction per interval (checked 2026-10). The whole
-    regular file's rows are dropped for those intervals, not row-by-row, so a
-    facility missing from the correction can't be filled in from the
-    superseded regular file.
+    Keys not in columns are logged, since they would be dropped.
 
-    Keys not in `columns` would be silently dropped by the DataFrame
-    constructor, so they're logged - a new key appearing means _FIELDS needs
-    updating."""
+    Args:
+        rows: Raw rows, each tagged with is_correction.
+        columns: Columns to keep.
+
+    Returns:
+        One frame with the winning file's rows per interval.
+    """
     unknown = {key for row in rows for key in row} - set(columns) - {"is_correction"}
     if unknown:
         logger.warning(f"dropping unexpected key(s) {sorted(unknown)} next to {columns} - add them to _FIELDS")
@@ -192,9 +191,7 @@ def _rows_to_df(rows: list[dict], columns: list[str]) -> pd.DataFrame:
 
 
 def _finish_wide(columns: list[str], pivot: tuple[str, str] | None = None):
-    """All-numeric output, one row per interval: either the rows as they are
-    (one row per interval already), or pivoted so each `pivot[0]` value
-    (e.g. facility code) becomes a column of `pivot[1]` values."""
+    """Finisher for numeric fields: one row per interval, or pivot=(key, value) for one column per key."""
 
     def finish(rows: list[dict]) -> pd.DataFrame:
         df = _rows_to_df(rows, columns)
@@ -217,10 +214,7 @@ def _finish_wide(columns: list[str], pivot: tuple[str, str] | None = None):
 
 
 def _finish_long(value_dtypes: dict[str, str], extra_sort: list[str]):
-    """Long output with mixed column types, several rows per interval,
-    indexed by dispatch_interval (repeated). Columns are given explicitly so
-    every month has the same schema, even one where the field has no rows at
-    all (projected_level before Oct 2025)."""
+    """Finisher for long fields: indexed by dispatch_interval (repeated), with fixed columns and dtypes."""
 
     def finish(rows: list[dict]) -> pd.DataFrame:
         df = _rows_to_df(rows, ["dispatch_interval", *value_dtypes])
@@ -231,6 +225,7 @@ def _finish_long(value_dtypes: dict[str, str], extra_sort: list[str]):
 
 
 def _dict_field(key: str, names: list[str]):
+    """(extractor, finisher) pair for a flat dict field with the given column names."""
     return (_extract_dict(key), _finish_wide(["dispatch_interval", *names]))
 
 
@@ -341,20 +336,15 @@ FIELD_NAMES = list(_FIELDS)
 
 
 def _get_dispatch_solution_rows(path: Path, field_names: list[str]) -> tuple[dict[str, list[dict]], str | None]:
-    """Walk one file, running the requested extractors against the single
-    dispatch interval that file is authoritative for.
+    """Run the requested extractors on the one interval a file is for (its filename timestamp).
 
-    Each file reports the realised solution for its own filename timestamp plus
-    a couple of hours of forward-looking forecast intervals (which get
-    superseded by later files), so only the entry matching the file's own
-    timestamp is kept - and the walk stops as soon as it's found rather than
-    parsing the rest of a ~20MB file.
+    Args:
+        path: dispatchSolution JSON file.
+        field_names: Names in _FIELDS to run.
 
-    Every row is tagged with is_correction (derived from the filename, not the
-    item) so the finishers can prefer corrections - see _rows_to_df.
-
-    One bad file must never take down the whole ~45min run, so failures here
-    are always caught and reported, never raised."""
+    Returns:
+        ({field: rows}, error message or None).
+    """
     rows_by_field: dict[str, list[dict]] = {name: [] for name in field_names}
 
     match = _LEADING_TIMESTAMP.match(path.stem)
@@ -388,7 +378,7 @@ def _get_dispatch_solution_rows(path: Path, field_names: list[str]) -> tuple[dic
 
 
 def _month_of(path: Path) -> str:
-    """ "2025-01" from ReferenceDispatchSolution_202501210030[...].json."""
+    """"YYYY-MM" from a dispatchSolution file name."""
     stamp = path.name[len(_FILE_PREFIX) :]
     return f"{stamp[:4]}-{stamp[4:6]}"
 
@@ -396,19 +386,16 @@ def _month_of(path: Path) -> str:
 def build_dispatch_solution_data(
     fields: list[str] | None = None, dates: list[str] | None = None, max_workers: int = 12
 ) -> dict[str, pd.DataFrame]:
-    """Extract the requested fields (default: every field registered in
-    _FIELDS) from every dispatchSolution file, or just the files for `dates`
-    (e.g. ["2025-01-21"]) if given, returning {field_name: DataFrame}.
+    """Extract fields from every dispatchSolution file, a month at a time.
 
-    The full corpus is ~324k files (~20MB each) - too slow to walk
-    single-threaded (~3.75h measured), so it's parsed in parallel across
-    `max_workers` processes (~45min measured on 12 workers). A `dates` subset
-    is a handful of files and runs sequentially - useful for exploring a new
-    field on a couple of days before committing to a full walk.
+    Args:
+        fields: Names in _FIELDS to extract; defaults to all.
+        dates: Only these days, e.g. ["2025-01-21"] (run sequentially); None for every file.
+        max_workers: Parallel processes.
 
-    Either way files are processed a month at a time (see module docstring),
-    and the months concatenated at the end. A correction file always shares
-    its interval's month, so deduplicating within a month is enough."""
+    Returns:
+        {field: DataFrame}.
+    """
     field_names = fields if fields is not None else list(_FIELDS)
     unknown = [name for name in field_names if name not in _FIELDS]
     if unknown:

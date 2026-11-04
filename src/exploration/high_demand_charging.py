@@ -1,16 +1,11 @@
-"""Do high-demand days also have poor charging? Daytime fleet net charge on high-demand days vs other days,
-by season.
-
-High-demand day: ESROI demand (MWh) in the top quarter of its season. Within each season, not overall:
-over the whole year the top quarter would be almost all summer and winter days, and the comparison
-would really be between seasons.
+"""Do high-demand days also have poor charging? Daytime fleet net charge on high-demand days vs other days, by season.
+High-demand day: ESROI demand in the top quarter of its own season.
 
     python -m exploration.high_demand_charging
 """
 
 from analysis.energy import fleet_net_energy_pct, window_energy_mwh
-from exploration.solar_charging import DAYTIME_END, DAYTIME_START
-from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, commissioning_dates
+from tools.constants import DAYTIME_END, DAYTIME_START, PEAK_ESROI_END, PEAK_ESROI_START, commissioning_dates
 from tools.io import load_clean
 from tools.plot_style import DISCHARGE_COLOR
 from tools.seasons import season_of

@@ -1,7 +1,4 @@
-"""Saving data files, and reading/writing the cleaned datasets in data/processed_data/clean/.
-
-Extracted datasets are read with data_extraction.catalog.load instead.
-"""
+"""Save data files, and read/write the cleaned datasets in clean/. Extracted ones: data_extraction.catalog.load."""
 
 from pathlib import Path
 
@@ -12,12 +9,14 @@ from tools.constants import START_DATE
 
 
 def save_df_to_csv(df: pd.DataFrame, filename: Path):
+    """Save df to filename as CSV, creating the folder if needed."""
     filename.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(filename)
     print(f"csv successfully saved to {filename}")
 
 
 def save_df_to_parquet(df: pd.DataFrame, filename: Path):
+    """Save df to filename as parquet, creating the folder if needed."""
     filename.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(filename)
     print(f"parquet successfully saved to {filename}")
@@ -39,8 +38,18 @@ def save_clean(name: str, df: pd.DataFrame) -> None:
 
 
 def load_clean(name: str, start_date: str | None = START_DATE) -> pd.DataFrame:
-    """Read clean/<name>.parquet; raises if it doesn't exist (never builds it).
-    Slices the dataframe starting from a start date default of 2024-12-01"""
+    """Read a cleaned dataset. Never builds it.
+
+    Args:
+        name: Dataset name, e.g. "soc".
+        start_date: First date to keep; None for the whole timeline.
+
+    Returns:
+        The dataset from start_date on.
+
+    Raises:
+        FileNotFoundError: If clean/<name>.parquet doesn't exist.
+    """
     path = clean_path(name)
     if not path.exists():
         raise FileNotFoundError(f"{path} doesn't exist - run data_processing/main.py to produce it")

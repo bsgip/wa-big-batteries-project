@@ -1,7 +1,5 @@
-"""Long extracted unconstrained forecast -> one wide frame (MW per facility) per technology.
-
-Steps: mask_sentinel -> net_by_facility -> clip_to_capacity -> classify_columns.
-Technology comes from the facility code: *PV* = pv, *WF* = wind, anything else = other_renewables.
+"""Unconstrained forecast (long) -> one wide frame (MW per facility) per technology.
+Technology from the code: *PV* = pv, *WF* = wind, else other_renewables.
 """
 
 import logging
@@ -35,9 +33,14 @@ def mask_sentinel(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def net_by_facility(df: pd.DataFrame) -> pd.DataFrame:
-    """Long -> wide: one column per facility, net MW per interval (injection +, withdrawal -).
+    """Net the two directions of the forecast into one value per facility.
 
-    NaN (not 0) where a facility has no data, so not-yet-commissioned farms stay missing.
+    Args:
+        df: Long forecast, two rows per (dispatch_interval, facility).
+
+    Returns:
+        One row per interval, one net MW column per facility (injection +, withdrawal -);
+        NaN where a facility has no data.
     """
     # withdrawal made negative whatever sign the extracted file stored it with
     df = df.copy()
@@ -49,7 +52,7 @@ def net_by_facility(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def technology_of(code: str) -> str:
-    """ "pv", "wind" or "other_renewables" for one facility code."""
+    """"pv", "wind" or "other_renewables" for one facility code."""
     upper = code.upper()
     if PV_MARKER in upper:
         return "pv"
@@ -67,7 +70,15 @@ def classify_columns(df: pd.DataFrame) -> dict[str, list[str]]:
 
 
 def clip_to_capacity(wide: pd.DataFrame, capacity: dict[str, float]) -> pd.DataFrame:
-    """Cap each facility's forecast at its registered capacity (MW); log how many intervals were capped."""
+    """Cap each facility's forecast at its registered capacity, logging how many intervals were capped.
+
+    Args:
+        wide: Net MW, one column per facility.
+        capacity: {facility code: registered MW}.
+
+    Returns:
+        wide with values capped.
+    """
     wide = wide.copy()
     for code in wide.columns:
         if code not in capacity:
@@ -82,7 +93,15 @@ def clip_to_capacity(wide: pd.DataFrame, capacity: dict[str, float]) -> pd.DataF
 
 
 def process(df: pd.DataFrame, capacity: dict[str, float]) -> dict[str, pd.DataFrame]:
-    """Extracted forecast -> {"pv", "wind", "other_renewables"}: MW per facility, sentinel masked, capped at capacity."""
+    """Clean the extracted unconstrained forecast.
+
+    Args:
+        df: Extracted long forecast.
+        capacity: {facility code: registered MW}.
+
+    Returns:
+        {"pv" | "wind" | "other_renewables": one MW column per facility}.
+    """
     df = mask_sentinel(df)
     wide = net_by_facility(df)
     wide = clip_to_capacity(wide, capacity)
