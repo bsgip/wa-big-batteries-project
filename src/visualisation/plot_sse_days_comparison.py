@@ -9,9 +9,10 @@ import pandas as pd
 from matplotlib import patheffects
 from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
-from data_extraction.catalog import is_extracted, load, load_many
+from data_extraction.catalog import load
 from data_processing.soc import clean_charge_level_sentinel_df, derive_capacity_from_observed_max
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START, battery_capacity_MW, battery_codes
+from tools.io import is_processed, load_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 
@@ -49,20 +50,19 @@ def _load_data(zero_minutes: int = 30, frozen_minutes: int = 60):
     if _data_cache.get("_key") == cache_key:
         return _data_cache["soc"], _data_cache["power"], _data_cache["demand"], _data_cache["price"]
 
-    data = load_many(["soc", "dispatch_condition", "power", "price"])
-    power_df = data["power"]
+    power_df = load_clean("power", start_date=None)
 
     # Deliberately its own SOC cleaning, not data_processing.soc.process():
     # _gap_missing_telemetry treats frozen/zero telemetry differently from
     # process()'s mask_sustained_zero_runs, and the figures here were reviewed
     # against this version. Works from the extracted frame, not clean/.
-    soc_df = clean_charge_level_sentinel_df(data["soc"])
+    soc_df = clean_charge_level_sentinel_df(load("soc"))
     for code in battery_codes:
         if code in soc_df:
             soc_df[code] = _gap_missing_telemetry(soc_df[code], zero_minutes, frozen_minutes)
 
-    demand = data["dispatch_condition"]["dispatchCondition.demand"]
-    price = data["price"]["energy_price"]
+    demand = load_clean("demand", start_date=None)["demand"]
+    price = load_clean("price", start_date=None)["energy_price"]
 
     _data_cache.update(_key=cache_key, soc=soc_df, power=power_df, demand=demand, price=price)
     return soc_df, power_df, demand, price
@@ -298,11 +298,11 @@ def _default_obligation_mw() -> float:
 
 
 def _load_bidstack() -> pd.DataFrame | None:
-    """The bidstack dataset, or None (with a message) if it hasn't been extracted."""
-    if not is_extracted("bidstack"):
-        print("bidstack not extracted yet - run data_extraction/main.py to produce it")
+    """The clean bidstack dataset, or None (with a message) if it hasn't been processed."""
+    if not is_processed("bidstack"):
+        print("bidstack not processed yet - run data_processing/main.py to produce it")
         return None
-    return load("bidstack")
+    return load_clean("bidstack", start_date=None).reset_index()
 
 
 def _draw_bidstack_panel(ax: plt.Axes, day_code_bidstack: pd.DataFrame, norm, cmap: str = "turbo"):

@@ -7,9 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from data_extraction.catalog import load
-from tools.io import load_clean
 from tools.constants import battery_codes
+from tools.io import load_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import UNIT_COLORS, save_figure
 from visualisation.plot_variables_correlation import binned_stat
@@ -21,8 +20,8 @@ def load_temperature() -> pd.Series:
 
 
 def load_energy_price() -> pd.Series:
-    """5-min energy price ($/MWh), from the extracted dispatchSolution data."""
-    return load("price")["energy_price"]
+    """5-min energy price ($/MWh)."""
+    return load_clean("price", start_date=None)["energy_price"]
 
 
 # one colour per at_time, when several times are overlaid in a panel
@@ -201,8 +200,8 @@ POWER_KWARGS = {
 
 def _plot_pooled_and_by_time(slug: str, **kwargs) -> None:
     """Call plot_soc_vs twice: pooled over every interval, and at fixed times of day."""
-    plot_soc_vs(filename=f"{slug}.png", **kwargs)
-    plot_soc_vs(filename=f"{slug}_by_time.png", at_time=PEAK_TIMES, **kwargs)
+    plot_soc_vs(filename=f"correlations/{slug}.png", **kwargs)
+    plot_soc_vs(filename=f"correlations/{slug}_by_time.png", at_time=PEAK_TIMES, **kwargs)
 
 
 def main():

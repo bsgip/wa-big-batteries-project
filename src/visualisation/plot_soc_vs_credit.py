@@ -204,7 +204,7 @@ def plot_share_below_by_month(soc_start, share, capacity, ylabel, title, filenam
     ax_share.set_ylim(-3, 103)
     ax_share.set_ylabel(ylabel)
     ax_share.grid(alpha=0.3)
-    ax_share.legend(loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=4, fontsize=8.5, frameon=False)
+    ax_share.legend(loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=3, fontsize=8.5, frameon=False)
     ax_share.set_title(title, pad=40)  # room for the two legend rows
 
     ax_cap.step(counted.index, counted, where='post', color='0.3', lw=1.5)

@@ -165,7 +165,7 @@ def plot_variables_correlation(
         overlay_sse: Also plot sse_df's days in red.
         sse_df: SSE days, same columns as df.
         title: Figure title.
-        filename: Path under local_plots_dir; defaults to "corr_<x_col>_vs_<y_col><suffix>.png".
+        filename: Path under local_plots_dir; defaults to "correlations/corr_<x_col>_vs_<y_col><suffix>.png".
         filename_suffix: Added to the default filename.
         line_fit: Draw the binned summary line.
         bins: Bins for the summary line.
@@ -188,7 +188,7 @@ def plot_variables_correlation(
     if title is not None:
         ax.set_title(title)
 
-    save_figure(fig, local_plots_dir / (filename or f"corr_{x_col}_vs_{y_col}{filename_suffix}.png"))
+    save_figure(fig, local_plots_dir / (filename or f"correlations/corr_{x_col}_vs_{y_col}{filename_suffix}.png"))
     return r
 
 
@@ -243,7 +243,7 @@ def plot_variables_correlation_by_season(
         fig.suptitle(title)
 
     fig.tight_layout()
-    save_figure(fig, local_plots_dir / (filename or f"corr_{x_col}_vs_{y_col}{filename_suffix}_season_grid.png"))
+    save_figure(fig, local_plots_dir / (filename or f"correlations/corr_{x_col}_vs_{y_col}{filename_suffix}_season_grid.png"))
     return r_by_panel
 
 
