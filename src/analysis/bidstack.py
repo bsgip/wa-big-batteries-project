@@ -5,23 +5,6 @@ import pandas as pd
 from tools.constants import battery_codes
 from tools.paths import extracted_data_dir, local_data_dir
 
-BIDSTACK_CSV = local_data_dir / "battery_bidstack.csv"
-
-
-def extract_battery_bidstack():
-    """Save the battery rows of extracted/bidstack.parquet to BIDSTACK_CSV."""
-    filename = extracted_data_dir / "bidstack.parquet"
-    df = pd.read_parquet(filename)
-    df = df.loc[df["code"].isin(battery_codes)]
-    cols = ["dispatch_interval", "code", "tranche", "quantity", "submitted_price"]
-    df = df[cols]
-
-    try:
-        df.to_csv(BIDSTACK_CSV, index=False)
-        print("succesfully saved to csv")
-    except Exception as e:
-        print(e)
-
 
 def load_bidstack() -> pd.DataFrame:
     """Load BIDSTACK_CSV and add a mw_dollars column (quantity x submitted_price).

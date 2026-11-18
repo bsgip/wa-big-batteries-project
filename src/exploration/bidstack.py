@@ -1,16 +1,17 @@
 """Battery bid stacks as MW$ by tranche - uncomment the plot you want.
 
-    python -m exploration.bidstack
+python -m exploration.bidstack
 """
 
-from analysis.bidstack import load_bidstack, rolling_change
+from analysis.bidstack import rolling_change
+from tools.io import load_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import save_figure
 from visualisation.plot_bidstack import plot_mw_dollars_by_tranche, plot_rolling_change, plot_tranche_heatmap
 
 
 def main():
-    bidstack = load_bidstack()
+    bidstack = load_clean("bidstack")
     rolling_change(bidstack)
 
     # fig = plot_mw_dollars_by_tranche(bidstack, freq="D")

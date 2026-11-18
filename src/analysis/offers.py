@@ -4,7 +4,6 @@ Prices are lfa_price (loss-factor adjusted); uses clean/bidstack, without the ±
 
 import pandas as pd
 
-from data_extraction.catalog import load
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START
 from tools.io import load_clean
 
@@ -57,7 +56,7 @@ def esroi_opportunity_benchmark() -> pd.Series:
         $/MWh, indexed by the run's primary dispatch interval. Runs in the last ESROI
         half-hour have no value.
     """
-    forecast = load("predispatch_price")
+    forecast = load_clean("predispatch_price", start_date=None).reset_index()
     start, end = pd.Timedelta(f"{PEAK_ESROI_START}:00"), pd.Timedelta(f"{PEAK_ESROI_END}:00")
     time_of_day = forecast["dispatch_interval"] - forecast["dispatch_interval"].dt.normalize()
     run_time_of_day = forecast["primary_dispatch_interval"] - forecast["primary_dispatch_interval"].dt.normalize()

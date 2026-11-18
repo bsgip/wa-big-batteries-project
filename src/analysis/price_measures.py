@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from data_extraction.catalog import load
-from tools.io import save_clean
+from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START
+from tools.io import load_clean, save_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import save_figure
 from visualisation.plot_trend_band import mark_period_medians, trend_band_plot
@@ -22,6 +22,7 @@ INTERVALS_PER_HOUR = 12  # 5-min prices
 
 # A day needs this many of its 288 5-min intervals to count; part days give misleading stats.
 MIN_INTERVALS_PER_DAY = 240
+MIN_INTERVALS_ESROI = 40  # of the ESROI's 48, the same share as 240 of 288
 
 # year-on-year comparison: the same months each year (Dec-Sep, the full months every year has),
 # so seasonality doesn't read as change
@@ -122,19 +123,21 @@ def plot_std_trend(measures):
     )
 
 
-def plot_price_median_trend(measures):
+def plot_price_median_trend(
+    measures,
+    ylabel='Daily price median ($/MWh)',
+    title='Daily price median: monthly spread of the daily price median',
+    filename='price_daily_median_trend.png',
+):
     """Plot the monthly trend band of the daily median price, with SAME_MONTHS medians marked.
 
     Args:
-        measures: Daily measures, from daily_price_measures.
+        measures: Daily measures, from daily_price_measures (whole day or one window of it).
+        ylabel: Y-axis label.
+        title: Figure title.
+        filename: Path under local_plots_dir to save the figure to.
     """
-    filename = 'price_daily_median_trend.png'
-    fig, ax, _ = trend_band_plot(
-        df=measures['median'],
-        ylabel='Daily price median ($/MWh)',
-        title='Daily price median: monthly spread of the daily price median',
-        filename=filename,
-    )
+    fig, ax, _ = trend_band_plot(df=measures['median'], ylabel=ylabel, title=title, filename=filename)
     legend = ax.get_legend()  # mark_period_medians sets its own legend - keep the one above the plot too
     mark_period_medians(ax, measures['median'], SAME_MONTHS, value_format="{:,.0f} $/MWh")
     ax.add_artist(legend)
@@ -145,13 +148,23 @@ def plot_price_median_trend(measures):
 def main():
     pd.set_option("display.max_columns", None)
     
-    measures = daily_price_measures(load("price")["energy_price"])
-    
+    price = load_clean("price", start_date=None)["energy_price"]
+    measures = daily_price_measures(price)
+
     print(measures.head())
-    
+
     # save_clean("price_measures", measures)
     plot_std_trend(measures)
     plot_price_median_trend(measures)
+
+    # ESROI only: each day's median over its 48 ESROI intervals
+    esroi_measures = daily_price_measures(price, PEAK_ESROI_START, PEAK_ESROI_END, min_intervals=MIN_INTERVALS_ESROI)
+    plot_price_median_trend(
+        esroi_measures,
+        ylabel="Daily ESROI price median ($/MWh)",
+        title=f"ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END}) price median: monthly spread of the daily median",
+        filename="price/price_esroi_median_trend.png",
+    )
 
 
 if __name__ == "__main__":

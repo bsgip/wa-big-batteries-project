@@ -6,7 +6,6 @@ energy price, by season.
 
 from analysis.energy import fleet_net_energy_pct
 from analysis.price_measures import daily_price_measures
-from data_extraction.catalog import load
 from tools.constants import DAYTIME_END, DAYTIME_START, commissioning_dates
 from tools.io import load_clean
 from visualisation.plot_pv_charging import plot_by_season_scatter
@@ -20,7 +19,7 @@ def main():
     power = load_clean("power")
 
     # median, not mean: one price spike (prices run from -1000 to 1100 $/MWh) shouldn't decide a day
-    price = daily_price_measures(load("price")["energy_price"], DAYTIME_START, DAYTIME_END, min_intervals=MIN_PRICE_INTERVALS)
+    price = daily_price_measures(load_clean("price", start_date=None)["energy_price"], DAYTIME_START, DAYTIME_END, min_intervals=MIN_PRICE_INTERVALS)
 
     # same y as the solar and wind plots: net charge as % of fleet capacity, discharge-positive flipped
     net_charge_pct = -fleet_net_energy_pct(power, commissioning_dates(soc, power), DAYTIME_START, DAYTIME_END)

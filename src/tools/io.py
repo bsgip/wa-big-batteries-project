@@ -37,12 +37,14 @@ def save_clean(name: str, df: pd.DataFrame) -> None:
     save_df_to_parquet(df, clean_path(name))
 
 
-def load_clean(name: str, start_date: str | None = START_DATE) -> pd.DataFrame:
+def load_clean(name: str, start_date: str | None = START_DATE, **read_parquet_kwargs) -> pd.DataFrame:
     """Read a cleaned dataset. Never builds it.
 
     Args:
         name: Dataset name, e.g. "soc".
         start_date: First date to keep; None for the whole timeline.
+        **read_parquet_kwargs: Passed to pd.read_parquet, e.g. columns=[...] or
+            filters=[("code", "in", battery_codes)] to read part of a big dataset.
 
     Returns:
         The dataset from start_date on.
@@ -53,7 +55,7 @@ def load_clean(name: str, start_date: str | None = START_DATE) -> pd.DataFrame:
     path = clean_path(name)
     if not path.exists():
         raise FileNotFoundError(f"{path} doesn't exist - run data_processing/main.py to produce it")
-    df = pd.read_parquet(path).sort_index()
+    df = pd.read_parquet(path, **read_parquet_kwargs).sort_index()
     
     if start_date is None:
         return df

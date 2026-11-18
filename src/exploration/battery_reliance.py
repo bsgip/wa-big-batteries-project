@@ -77,11 +77,22 @@ def main():
     )
 
     # full history (from Sep 2023), to match the price trend plots - not just the analysis period
+    full_demand = load_clean("demand", start_date=None)["demand"]
     trend_band_plot(
-        df=load_clean("demand", start_date=None)["demand"],
+        df=full_demand,
         ylabel="Operational demand (MW)",
         title="Operational demand evolution",
         filename="demand_evolution_trend.png",
+    )
+
+    # ESROI only: one value per day (the evening's average MW), so each month counts as fully covered
+    esroi_demand = full_demand.between_time(PEAK_ESROI_START, PEAK_ESROI_END, inclusive="left")
+    daily_esroi_demand = esroi_demand.resample("D").mean()
+    trend_band_plot(
+        df=daily_esroi_demand,
+        ylabel="Operational demand (MW)\nDaily average over ESROI",
+        title=f"Operational demand evolution during ESROI ({PEAK_ESROI_START}-{PEAK_ESROI_END})",
+        filename="demand_esroi_evolution_trend.png",
     )
 
     # DPV is only clean from 2024-11-07 (see data_processing/dpv.py) - start there, so the

@@ -4,8 +4,8 @@ Offered injection = sum of positive tranches, so charge offers can't cancel out 
 
 import pandas as pd
 
-from data_extraction.catalog import load
 from tools.constants import battery_codes
+from tools.io import load_clean
 
 # float noise: 199.98 MW offered against a 200 MW RCOQ is not a shortfall worth counting
 SHORTFALL_TOLERANCE_MW = 0.01
@@ -21,7 +21,7 @@ def offered_injection_mw(codes: list[str] | None = None) -> pd.DataFrame:
         One row per interval, one MW column per battery; NaN where the battery made no offer.
     """
     codes = battery_codes if codes is None else codes
-    bids = load("bidstack", columns=["dispatch_interval", "code", "quantity"])
+    bids = load_clean("bidstack", start_date=None, columns=["code", "quantity"]).reset_index()
     bids = bids[bids["code"].isin(codes)]
 
     has_offer = bids.groupby(["dispatch_interval", "code"]).size().unstack().notna()

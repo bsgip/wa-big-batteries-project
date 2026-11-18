@@ -5,8 +5,7 @@ earlier, or charging less? Days grouped by the highest price before the ESROI.
 """
 
 from analysis.pre_esroi import PRICE_BAND_LABELS, daily_max_price, fleet_charged_discharged_pct, price_band
-from data_extraction.catalog import load
-from tools.constants import PEAK_ESROI_START, START_DATE, commissioning_dates
+from tools.constants import PEAK_ESROI_START, commissioning_dates
 from tools.io import load_clean
 from tools.plot_style import CHARGE_COLOR, DISCHARGE_COLOR
 from visualisation.plot_group_boxes import plot_panels_by_group
@@ -18,7 +17,7 @@ WINDOW_START = "12:00"
 def main():
     soc = load_clean("soc")
     power = load_clean("power")
-    price = load("price")["energy_price"].loc[START_DATE:]  # clean price is out of date; raw has every interval
+    price = load_clean("price")["energy_price"]
 
     soc_start = soc["fleet_soc_pct"].at_time(PEAK_ESROI_START)
     soc_start.index = soc_start.index.normalize()

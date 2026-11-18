@@ -1,12 +1,11 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from data_extraction.catalog import load
 from tools.io import load_clean
 from tools.paths import local_plots_dir
 from tools.plot_style import save_figure
 
-price = load("price")["energy_price"]
+price = load_clean("price", start_date=None)["energy_price"]
 demand = load_clean("demand")
 date = "2026-10-04"
 df = pd.concat([price, demand])

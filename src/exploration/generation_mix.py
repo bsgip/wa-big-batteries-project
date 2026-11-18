@@ -13,7 +13,7 @@ from analysis.generation_mix import (
     monthly_generation_mwh,
     monthly_generation_share,
 )
-from data_extraction.catalog import load
+from tools.io import load_clean
 from tools.plot_style import TECHNOLOGY_COLORS
 from visualisation.plot_monthly_bars import plot_monthly_stacked_bars
 
@@ -25,8 +25,7 @@ SAME_MONTHS = [("2023-12-01", "2024-09-30"), ("2024-12-01", "2025-09-30"), ("202
 
 
 def main():
-    power = load("power")  # every facility, not just the batteries
-    power = power.loc[power.index >= START]  # tz-aware index vs date string: compared in its own tz
+    power = load_clean("power", start_date=START)  # every facility, not just the batteries
     groups = facility_groups()
 
     monthly_mwh = monthly_generation_mwh(power, groups)

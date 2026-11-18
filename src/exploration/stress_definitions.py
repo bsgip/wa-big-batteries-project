@@ -8,11 +8,13 @@ import pandas as pd
 from analysis.sse_events import raw_advisories_path
 from analysis.stress_events import (
     SPARE_CAPACITY_THRESHOLD_MW,
+    TOP_DEMAND_SHARE,
     advisory_starts,
     in_service_capacity_mw,
     low_spare_capacity_starts,
     review_event_starts,
     spare_capacity_mw,
+    top_demand_day_starts,
 )
 from tools.constants import PEAK_ESROI_END, PEAK_ESROI_START
 from tools.io import load_clean
@@ -27,17 +29,20 @@ from visualisation.plot_trend_band import trend_band_plot
 REVIEW = "CC2T review events"
 ADVISORIES = "AEMO LRC/LOR market advisories"
 SPARE = f"Spare capacity below {SPARE_CAPACITY_THRESHOLD_MW} MW"
+TOP_DEMAND = f"Top {TOP_DEMAND_SHARE:.0%} of days by peak demand"
 
 
 def main():
     spare = spare_capacity_mw()
     review = review_event_starts()
     advisories_raw = pd.read_csv(raw_advisories_path, encoding="cp1252", usecols=["Start Interval"])
+    demand = load_clean("demand", start_date=None)["demand"]  # full history, as the demand trend plots
 
     definitions = {
         REVIEW: review,
         ADVISORIES: advisory_starts(),
         SPARE: low_spare_capacity_starts(spare),
+        TOP_DEMAND: top_demand_day_starts(demand),
     }
 
     # the period each source covers, so seasons with no data aren't read as seasons with no stress
@@ -45,6 +50,7 @@ def main():
         REVIEW: (review.min(), review.max()),  # the review's own period isn't recorded - first to last event
         ADVISORIES: tuple(pd.to_datetime(advisories_raw["Start Interval"]).agg(["min", "max"])),  # the download
         SPARE: (spare.index.min().tz_localize(None), spare.index.max().tz_localize(None)),  # the dispatch data
+        TOP_DEMAND: (demand.index.min().tz_localize(None), demand.index.max().tz_localize(None)),
     }
 
     _, _, tables = plot_stress_days_by_season_hour(

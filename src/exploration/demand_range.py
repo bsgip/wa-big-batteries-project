@@ -22,7 +22,7 @@ def main():
         x_series=broadcast_to_intervals(demand_range["range"], soc.index),
         x_label="Daily demand range (MW)",
         title="Battery SOC vs daily demand range - full history",
-        filename="soc_vs_demand_range.png",
+        filename="correlations/soc_vs_demand_range.png",
     )
 
 

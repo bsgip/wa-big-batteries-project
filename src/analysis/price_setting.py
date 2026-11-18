@@ -4,7 +4,7 @@ A price setter is a facility (any of its tranches) or a non-offer variable, coun
 
 import pandas as pd
 
-from data_extraction.catalog import load
+from tools.io import load_clean
 
 SERVICES = ["energy", "regulationRaise", "regulationLower", "contingencyRaise", "contingencyLower", "rocof"]
 OTHER_FACILITIES = "Other facilities"
@@ -26,7 +26,7 @@ def price_setting_contributions(service: str = "energy") -> pd.DataFrame:
         One row per contribution: dispatch_interval, facility and offer_service (the service
         the tranche is offered in); both NaN for variables that aren't offer tranches.
     """
-    df = load("price_setting", columns=["market_service", "contributing_variable"])
+    df = load_clean("price_setting", start_date=None, columns=["market_service", "contributing_variable"])
     df = df.loc[df["market_service"] == service].dropna(subset=["contributing_variable"])
 
     parts = df["contributing_variable"].str.extract(rf"^(.+?)_({'|'.join(SERVICES)})_Tranche_\d+$")

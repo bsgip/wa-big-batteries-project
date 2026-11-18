@@ -8,8 +8,7 @@ from analysis.energy import DAY_WINDOWS
 from analysis.fcess import enabled_mw, mean_by_window
 from analysis.owner_fleets import OWNER_BATTERIES
 from analysis.pre_esroi import fleet_charged_discharged_pct, price_band
-from data_extraction.catalog import load
-from tools.constants import START_DATE, commissioning_dates
+from tools.constants import commissioning_dates
 from tools.io import load_clean
 from visualisation.plot_fcess import plot_fcess_and_power_by_window
 from visualisation.plot_group_boxes import plot_panels_by_group
@@ -45,7 +44,7 @@ def main():
     )
 
     # D. morning discharge against the morning energy price
-    price = load("price")["energy_price"].loc[START_DATE:]  # clean price is out of date; raw has every interval
+    price = load_clean("price")["energy_price"]
     morning_price = price.between_time(*MORNING, inclusive="left").resample("D").mean()
     band = price_band(morning_price, MORNING_PRICE_EDGES, MORNING_PRICE_LABELS)
     commissioning = commissioning_dates(soc, power)
